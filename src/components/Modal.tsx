@@ -112,7 +112,7 @@ export function CreateModal({ kind, space, projects, onClose, onSave }: CreateMo
                   <label>优先级<select value={String(values.priority)} onChange={(event) => set("priority", event.target.value as TaskPriority)}><option value="urgent">紧急</option><option value="high">高</option><option value="normal">普通</option><option value="low">低</option></select></label>
                 </div>
                 <div className="form-grid">
-                  <label>截止日期<input type="date" value={String(values.dueDate ?? "")} onChange={(event) => set("dueDate", event.target.value || null)} /></label>
+                  <label>截止日期<input type="date" value={String(values.dueDate ?? "")} onChange={(event) => { set("dueDate", event.target.value || null); event.currentTarget.blur(); }} /></label>
                   <label>所属项目<select value={String(values.projectId ?? "")} onChange={(event) => set("projectId", event.target.value || null)}><option value="">不关联项目</option>{projects.filter((project) => project.space === space).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
                 </div>
                 <label>标签<input value={String(values.tags ?? "")} onChange={(event) => set("tags", event.target.value)} placeholder="#待研究  #重要" /></label>

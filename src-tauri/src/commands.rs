@@ -1,4 +1,5 @@
 use base64::Engine;
+use std::path::Path;
 use tauri::State;
 
 use crate::{
@@ -554,6 +555,17 @@ pub fn add_attachment(
     entity_id: Option<String>,
 ) -> AppResult<String> {
     repository(&state)?.add_attachment(&source_path, space, entity_id)
+}
+
+#[tauri::command]
+pub fn read_text_file(source_path: String) -> AppResult<String> {
+    let path = Path::new(&source_path);
+    if !path.is_file() {
+        return Err(AppError::Validation(format!(
+            "文本文件不存在：{source_path}"
+        )));
+    }
+    Ok(std::fs::read_to_string(path)?)
 }
 
 #[tauri::command]

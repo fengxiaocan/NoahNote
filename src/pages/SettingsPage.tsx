@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AppSettings, BackupInfo, SyncAction, SyncHistoryEntry, SyncReport } from "../types";
 import { PageHeader } from "../components/PageHeader";
+import type { Theme } from "../lib/theme";
 
 interface SettingsPageProps {
   settings: AppSettings;
@@ -10,9 +11,11 @@ interface SettingsPageProps {
   onBackup: () => Promise<void>;
   onRestore: (name: string) => Promise<void>;
   onSync: (action: SyncAction) => Promise<SyncReport | null>;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
 }
 
-export function SettingsPage({ settings, backups, syncHistory, onSave, onBackup, onRestore, onSync }: SettingsPageProps) {
+export function SettingsPage({ settings, backups, syncHistory, onSave, onBackup, onRestore, onSync, theme, onThemeChange }: SettingsPageProps) {
   const [draft, setDraft] = useState(settings);
   const [message, setMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -62,6 +65,22 @@ export function SettingsPage({ settings, backups, syncHistory, onSave, onBackup,
 
   return <div className="page-stack narrow-page settings-page">
     <PageHeader eyebrow="保持掌控" title="设置与同步" description="数据默认保存在本机，选择你信任的方式进行备份和同步。" />
+
+    <section className="settings-section appearance-section">
+      <div className="settings-section-heading"><div><h2>外观</h2><p>选择适合当前环境的阅读氛围，主题会自动记住。</p></div><span className="settings-icon">◐</span></div>
+      <div className="theme-choice-grid" role="group" aria-label="主题选择">
+        <button type="button" className={`theme-choice ${theme === "light" ? "is-active" : ""}`} aria-pressed={theme === "light"} onClick={() => onThemeChange("light")}>
+          <span className="theme-choice-swatch theme-swatch-light" aria-hidden="true">Aa</span>
+          <span className="theme-choice-copy"><strong>浅色主题</strong><small>清爽、明亮的纸张质感</small></span>
+          <span className="theme-choice-check" aria-hidden="true">{theme === "light" ? "✓" : ""}</span>
+        </button>
+        <button type="button" className={`theme-choice ${theme === "dark" ? "is-active" : ""}`} aria-pressed={theme === "dark"} onClick={() => onThemeChange("dark")}>
+          <span className="theme-choice-swatch theme-swatch-dark" aria-hidden="true">Aa</span>
+          <span className="theme-choice-copy"><strong>暗色主题</strong><small>沉浸、柔和的夜间阅读</small></span>
+          <span className="theme-choice-check" aria-hidden="true">{theme === "dark" ? "✓" : ""}</span>
+        </button>
+      </div>
+    </section>
 
     <section className="settings-section">
       <div className="settings-section-heading"><div><h2>本地 Workspace</h2><p>笔记使用 Markdown，任务和项目使用 JSON，SQLite 只保存本地索引。</p></div><span className="settings-icon">⌂</span></div>

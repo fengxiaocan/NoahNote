@@ -19,17 +19,18 @@ interface NotesPageProps {
   onArchive: (note: Note) => void;
   onDelete: (note: Note) => void;
   onAttach: (note: Note) => void;
+  onImport: () => void | Promise<void>;
   onRestoreVersion: (versionId: string) => Promise<void>;
   onOpenTarget: (id: string, kind: string) => void;
 }
 
-export function NotesPage({ space, notes, projects, selectedId, onSelect, onCreate, onUpdate, onToggleFavorite, onArchive, onDelete, onAttach, onRestoreVersion, onOpenTarget }: NotesPageProps) {
+export function NotesPage({ space, notes, projects, selectedId, onSelect, onCreate, onUpdate, onToggleFavorite, onArchive, onDelete, onAttach, onImport, onRestoreVersion, onOpenTarget }: NotesPageProps) {
   const [showFavorites, setShowFavorites] = useState(false);
   const visibleNotes = showFavorites ? notes.filter((note) => note.favorite) : notes;
   const selected = visibleNotes.find((note) => note.id === selectedId) ?? null;
   return (
     <div className="page-stack notes-page">
-      <PageHeader eyebrow="记录与思考" title="笔记" description={`${notes.length} 篇 Markdown 笔记 · 用空间、项目和标签找到它们`} action={<button className="button primary" onClick={() => onCreate("note")}>＋ 新建笔记</button>} />
+      <PageHeader eyebrow="记录与思考" title="笔记" description={`${notes.length} 篇 Markdown 笔记 · 用空间、项目和标签找到它们`} action={<><button className="button secondary" onClick={() => void onImport()}>导入 Markdown</button><button className="button primary" onClick={() => onCreate("note")}>＋ 新建笔记</button></>} />
       <div className="notes-workspace">
         <section className="notes-list-panel"><div className="notes-list-heading"><span>{showFavorites ? "我的收藏" : "最近编辑"}</span><button className="small-button" onClick={() => setShowFavorites((current) => !current)}>{showFavorites ? "全部" : "收藏"}</button></div>{visibleNotes.length === 0 ? <div className="compact-empty"><span>▤</span><p>{showFavorites ? "还没有收藏笔记" : "还没有笔记"}</p><button className="text-button" onClick={() => onCreate("note")}>{showFavorites ? "写一篇并收藏 →" : "写一篇 →"}</button></div> : <div className="notes-list">{visibleNotes.map((note) => <div className="note-list-row" key={note.id}><button className={`note-list-item ${note.id === selectedId ? "is-selected" : ""}`} onClick={() => onSelect(note.id)}><span className="note-symbol">▤</span><span className="note-list-copy"><strong>{note.title || "无标题笔记"}</strong><small>{note.content.replace(/[#>*`\n]/g, " ").slice(0, 74) || "暂无正文"}</small><time>{formatRelative(note.updatedAt)}</time></span></button><button className="favorite-toggle" aria-label={note.favorite ? "取消收藏" : "收藏"} title={note.favorite ? "取消收藏" : "收藏"} onClick={() => onToggleFavorite(note)}>{note.favorite ? "★" : "☆"}</button></div>)}</div>}</section>
         <section className="note-editor-panel">{selected ? <NoteEditor note={selected} projects={projects} onUpdate={onUpdate} onToggleFavorite={onToggleFavorite} onArchive={onArchive} onDelete={onDelete} onAttach={onAttach} onRestoreVersion={onRestoreVersion} onOpenTarget={onOpenTarget} /> : <div className="editor-placeholder"><div className="placeholder-glyph">✎</div><h3>选择一篇笔记</h3><p>从左侧打开内容，或新建一篇 Markdown 笔记。</p><button className="button secondary" onClick={() => onCreate("note")}>新建笔记</button></div>}</section>

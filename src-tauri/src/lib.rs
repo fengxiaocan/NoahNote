@@ -15,15 +15,84 @@ use std::sync::Mutex;
 use error::AppError;
 use tauri::Manager;
 
+#[cfg(desktop)]
+use tauri::{
+    menu::MenuBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    WindowEvent,
+};
+
 pub struct AppState {
     pub repository: Mutex<workspace::WorkspaceRepository>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+
+    #[cfg(desktop)]
+    {
+        builder = builder.on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        });
+    }
+
+    builder
         .setup(|app| {
+            #[cfg(desktop)]
+            {
+                let menu = MenuBuilder::new(app)
+                    .text("show", "显示 NoahNote")
+                    .separator()
+                    .text("quit", "退出")
+                    .build()?;
+                let icon = app
+                    .default_window_icon()
+                    .cloned()
+                    .ok_or_else(|| AppError::Config("无法加载托盘图标".into()))?;
+                TrayIconBuilder::with_id("main")
+                    .icon(icon)
+                    .menu(&menu)
+                    .tooltip("NoahNote")
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id().as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => app.exit(0),
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        let show_window = matches!(
+                            event,
+                            TrayIconEvent::DoubleClick {
+                                button: MouseButton::Left,
+                                ..
+                            } | TrayIconEvent::Click {
+                                button: MouseButton::Left,
+                                button_state: MouseButtonState::Up,
+                                ..
+                            }
+                        );
+                        if show_window {
+                            if let Some(window) = tray.app_handle().get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    })
+                    .build(app)?;
+            }
             let root = app
                 .path()
                 .app_data_dir()
@@ -122,6 +191,7 @@ pub fn run() {
             commands::install_plugin,
             commands::set_plugin_enabled,
             commands::add_attachment,
+            commands::read_text_file,
             commands::create_backup,
             commands::list_backups,
             commands::restore_backup,

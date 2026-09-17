@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from "react";
 import type { PageId, SearchResult, Space } from "../types";
+import type { Theme } from "../lib/theme";
 import { formatRelative } from "../lib/format";
 
 const navItems: Array<{ id: PageId; label: string; icon: string }> = [
@@ -39,6 +40,9 @@ interface AppShellProps {
   onSearchFocus: () => void;
   onOpenSearchResult: (result: SearchResult) => void;
   onQuickCapture: () => void;
+  theme: Theme;
+  onThemeToggle: () => void;
+  onMinimizeToTray: () => void;
   onRefresh: () => void;
   children: ReactNode;
 }
@@ -57,6 +61,9 @@ export function AppShell({
   onSearchFocus,
   onOpenSearchResult,
   onQuickCapture,
+  theme,
+  onThemeToggle,
+  onMinimizeToTray,
   onRefresh,
   children,
 }: AppShellProps) {
@@ -158,6 +165,12 @@ export function AppShell({
             </div>
             <button className="quick-capture-button" onClick={onQuickCapture}>
               <span>＋</span> 快速记录 <kbd>Ctrl ⇧ Space</kbd>
+            </button>
+            <button className="icon-button theme-toggle" title={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"} aria-label={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"} aria-pressed={theme === "dark"} onClick={onThemeToggle}>
+              <span aria-hidden="true">{theme === "dark" ? "☼" : "◐"}</span>
+            </button>
+            <button className="icon-button" title="最小化到托盘" aria-label="最小化到托盘" onClick={onMinimizeToTray}>
+              <span>⌄</span>
             </button>
             <button className="icon-button" title="刷新数据" onClick={onRefresh} disabled={loading}>
               <span className={loading ? "spin" : ""}>↻</span>

@@ -224,6 +224,7 @@ export const api = {
   listTags: (space: Space) => call<TagSummary[]>("list_tags", { space }),
   addAttachment: (sourcePath: string, space: Exclude<Space, "all">, entityId?: string | null) =>
     call<string>("add_attachment", { sourcePath, space, entityId }),
+  readTextFile: (sourcePath: string) => call<string>("read_text_file", { sourcePath }),
   createBackup: () => call<BackupInfo>("create_backup"),
   listBackups: () => call<BackupInfo[]>("list_backups"),
   restoreBackup: (name: string) => call<string>("restore_backup", { name }),

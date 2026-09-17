@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "./components/AppShell";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
 import { CreateModal, type CreateKind, type FormValues } from "./components/Modal";
 import { api, isTauri } from "./lib/api";
+import { normalizeTheme, themeStorageKey, toggleTheme, type Theme } from "./lib/theme";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { InboxPage } from "./pages/InboxPage";
 import { ChecklistsPage } from "./pages/ChecklistsPage";
@@ -20,6 +22,7 @@ import { TemplatesPage } from "./pages/TemplatesPage";
 import { TodayPage } from "./pages/TodayPage";
 import { TrashPage } from "./pages/TrashPage";
 import type { KnowledgeFolderInput, KnowledgePageInput, ScheduleEventInput } from "./lib/api";
+import { importedNoteTitle, parseTaskImport } from "./lib/import";
 import type { AppSettings, BackupInfo, Checklist, ChecklistItem, InboxItem, KnowledgeNode, KnowledgePage, Note, PageId, PdfDocument, PluginManifest, Project, ScheduleEvent, SearchResult, Space, SparkStage, SyncAction, SyncHistoryEntry, Task, Template, TemplateKind, TrashItem } from "./types";
 
 const defaultSettings: AppSettings = {
@@ -89,6 +92,13 @@ export default function App() {
   const [documents, setDocuments] = useState<PdfDocument[]>([]);
   const [plugins, setPlugins] = useState<PluginManifest[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return normalizeTheme(window.localStorage.getItem(themeStorageKey));
+    } catch {
+      return "light";
+    }
+  });
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [syncHistory, setSyncHistory] = useState<SyncHistoryEntry[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
@@ -106,6 +116,25 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const searchRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#101721" : "#f7f8fa");
+    try {
+      window.localStorage.setItem(themeStorageKey, theme);
+    } catch {
+      // The current session still keeps the selected theme if storage is unavailable.
+    }
+  }, [theme]);
+
+  const toggleAppTheme = useCallback(() => {
+    setTheme((current) => toggleTheme(current));
+  }, []);
+
+  const changeTheme = useCallback((nextTheme: Theme) => {
+    setTheme(nextTheme);
+  }, []);
 
   const reload = useCallback(async () => {
     if (!isTauri()) return;
@@ -354,6 +383,86 @@ export default function App() {
     await run(() => api.addAttachment(sourcePath, note.space, note.id));
   }, [run]);
 
+  const importNote = useCallback(async () => {
+    if (!isTauri()) {
+      setError("笔记导入需要在桌面应用中运行。");
+      return;
+    }
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      title: "选择要导入的 Markdown 笔记",
+      filters: [{ name: "Markdown / 文本", extensions: ["md", "markdown", "txt"] }],
+    });
+    const sourcePath = Array.isArray(selected) ? selected[0] : selected;
+    if (!sourcePath) return;
+    try {
+      const content = await api.readTextFile(sourcePath);
+      const created = await run(() => api.createNote({
+        title: importedNoteTitle(sourcePath, content),
+        content,
+        space: createSpaceFor(settings, space),
+        projectId: null,
+        tags: [],
+      }));
+      if (isNote(created)) {
+        setSelectedNoteId(created.id);
+        setActivePage("notes");
+      }
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }, [run, settings, space]);
+
+  const importTasks = useCallback(async () => {
+    if (!isTauri()) {
+      setError("任务导入需要在桌面应用中运行。");
+      return;
+    }
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      title: "选择要导入的任务文本",
+      filters: [{ name: "文本文件", extensions: ["txt", "md", "markdown", "csv"] }],
+    });
+    const sourcePath = Array.isArray(selected) ? selected[0] : selected;
+    if (!sourcePath) return;
+    try {
+      const titles = parseTaskImport(await api.readTextFile(sourcePath));
+      if (titles.length === 0) {
+        setError("文件中没有可导入的任务，每行需要有一个任务标题。");
+        return;
+      }
+      await run(async () => {
+        for (const title of titles) {
+          await api.createTask({
+            title,
+            description: "",
+            status: "todo",
+            priority: "normal",
+            dueDate: null,
+            space: createSpaceFor(settings, space),
+            projectId: null,
+            parentId: null,
+            tags: [],
+          });
+        }
+      });
+      setActivePage("tasks");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }, [run, settings, space]);
+
+  const minimizeToTray = useCallback(async () => {
+    if (!isTauri()) return;
+    try {
+      await getCurrentWindow().hide();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }, []);
+
   const createKnowledgeFolder = useCallback(async (input: KnowledgeFolderInput) => {
     await run(() => api.createKnowledgeFolder(input), true);
   }, [run]);
@@ -523,9 +632,9 @@ export default function App() {
       case "inbox": return <InboxPage space={space} items={inboxItems} selectedId={selectedInboxId} onSelect={setSelectedInboxId} onCreate={create} onUpdate={updateInboxItem} onArchive={archiveInboxItem} onDelete={deleteInboxItem} onMove={moveInboxItem} onPromote={promoteInboxItem} />;
       case "sparks": return <SparksPage space={space} items={sparkItems} selectedId={selectedInboxId} onCreate={create} onStageChange={updateSparkStage} onArchive={archiveInboxItem} onDelete={deleteInboxItem} onMove={moveInboxItem} onPromote={promoteInboxItem} />;
       case "today": return <TodayPage space={space} tasks={tasks} notes={notes} events={events} inbox={inbox} onCreate={create} onToggleTask={(task) => updateTask({ ...task, status: task.status === "done" ? "todo" : "done" })} />;
-      case "tasks": return <TasksPage space={space} tasks={tasks} projects={projects} selectedId={selectedTaskId} onSelect={setSelectedTaskId} onCreate={create} onUpdate={updateTask} onArchive={archiveTask} onDelete={deleteTask} />;
+      case "tasks": return <TasksPage space={space} tasks={tasks} projects={projects} selectedId={selectedTaskId} onSelect={setSelectedTaskId} onCreate={create} onUpdate={updateTask} onArchive={archiveTask} onDelete={deleteTask} onImport={importTasks} />;
       case "schedule": return <SchedulePage space={space} createSpace={createSpaceFor(settings, space)} events={events} tasks={tasks} projects={projects} createRequest={scheduleCreateRequest} selectedId={selectedEventId} onSelectionHandled={clearSelectedEvent} onSave={saveEvent} onArchive={archiveEvent} onDelete={deleteEvent} />;
-      case "notes": return <NotesPage space={space} notes={notes} projects={projects} selectedId={selectedNoteId} onSelect={setSelectedNoteId} onCreate={create} onUpdate={updateNote} onToggleFavorite={toggleFavoriteNote} onArchive={archiveNote} onDelete={deleteNote} onAttach={attachToNote} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} />;
+      case "notes": return <NotesPage space={space} notes={notes} projects={projects} selectedId={selectedNoteId} onSelect={setSelectedNoteId} onCreate={create} onUpdate={updateNote} onToggleFavorite={toggleFavoriteNote} onArchive={archiveNote} onDelete={deleteNote} onAttach={attachToNote} onImport={importNote} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} />;
       case "projects": return <ProjectsPage space={space} projects={projects} tasks={tasks} notes={notes} selectedId={selectedProjectId} onSelect={setSelectedProjectId} onCreate={create} onUpdate={updateProject} onArchive={archiveProject} onDelete={deleteProject} />;
       case "checklists": return <ChecklistsPage space={space} checklists={checklists} selectedId={selectedChecklistId} onSelect={setSelectedChecklistId} onCreate={create} onUpdate={updateChecklist} onArchive={archiveChecklist} onDelete={deleteChecklist} />;
       case "templates": return <TemplatesPage space={space} templates={templates} onCreate={create} onUpdate={updateTemplate} onArchive={archiveTemplate} onDelete={deleteTemplate} onUse={useTemplate} />;
@@ -533,13 +642,13 @@ export default function App() {
       case "documents": return <DocumentsPage space={space} documents={documents} selectedId={selectedDocumentId} onSelect={setSelectedDocumentId} onImport={importPdf} onExport={exportPdf} onOcr={ocrPdf} onDelete={deleteDocument} />;
       case "plugins": return <PluginsPage plugins={plugins} onInstall={installPlugin} onToggle={togglePlugin} />;
       case "trash": return <TrashPage space={space} retentionDays={settings.trashRetentionDays} items={trashItems} onRestore={restoreTrash} onDelete={permanentlyDeleteTrash} onPurge={purgeTrash} />;
-      case "settings": return <SettingsPage settings={settings} backups={backups} syncHistory={syncHistory} onSave={saveSettings} onBackup={createBackup} onRestore={restoreBackup} onSync={sync} />;
+      case "settings": return <SettingsPage settings={settings} backups={backups} syncHistory={syncHistory} onSave={saveSettings} onBackup={createBackup} onRestore={restoreBackup} onSync={sync} theme={theme} onThemeChange={changeTheme} />;
       default: return <OverviewPage space={space} notes={notes} tasks={tasks} projects={projects} inbox={inboxItems} events={events} checklists={checklists} onCreate={create} onNavigate={setActivePage} onToggleTask={updateTask} />;
     }
-  }, [activePage, archiveChecklist, archiveEvent, archiveInboxItem, archiveNote, archiveProject, archiveTask, archiveTemplate, attachToNote, backups, checklists, clearSelectedEvent, createBackup, createKnowledgeFolder, createKnowledgePage, deleteChecklist, deleteDocument, deleteEvent, deleteInboxItem, deleteKnowledgeFolder, deleteKnowledgePage, deleteNote, deleteProject, deleteTask, deleteTemplate, documents, events, exportPdf, importNoteToKnowledge, importPdf, inbox, installPlugin, knowledgeNodes, moveInboxItem, moveKnowledgeFolder, notes, ocrPdf, permanentlyDeleteTrash, plugins, projects, promoteInboxItem, purgeTrash, restoreBackup, restoreTrash, restoreVersion, saveEvent, saveSettings, scheduleCreateRequest, selectedChecklistId, selectedDocumentId, selectedEventId, selectedInboxId, selectedKnowledgePageForSpace, selectedNoteId, selectedProjectId, selectedTaskId, settings, space, sync, syncHistory, tasks, templates, toggleFavoriteNote, togglePlugin, trashItems, updateChecklist, updateInboxItem, updateKnowledgePage, updateNote, updateProject, updateSparkStage, updateTask, updateTemplate, useTemplate]);
+  }, [activePage, archiveChecklist, archiveEvent, archiveInboxItem, archiveNote, archiveProject, archiveTask, archiveTemplate, attachToNote, backups, changeTheme, checklists, clearSelectedEvent, createBackup, createKnowledgeFolder, createKnowledgePage, deleteChecklist, deleteDocument, deleteEvent, deleteInboxItem, deleteKnowledgeFolder, deleteKnowledgePage, deleteNote, deleteProject, deleteTask, deleteTemplate, documents, events, exportPdf, importNote, importNoteToKnowledge, importPdf, importTasks, inbox, installPlugin, knowledgeNodes, moveInboxItem, moveKnowledgeFolder, notes, ocrPdf, permanentlyDeleteTrash, plugins, projects, promoteInboxItem, purgeTrash, restoreBackup, restoreTrash, restoreVersion, saveEvent, saveSettings, scheduleCreateRequest, selectedChecklistId, selectedDocumentId, selectedEventId, selectedInboxId, selectedKnowledgePageForSpace, selectedNoteId, selectedProjectId, selectedTaskId, settings, space, sync, syncHistory, tasks, templates, theme, toggleFavoriteNote, togglePlugin, trashItems, updateChecklist, updateInboxItem, updateKnowledgePage, updateNote, updateProject, updateSparkStage, updateTask, updateTemplate, useTemplate]);
 
   const createSpace = space === "all" ? settings.defaultSpace : space;
-  return <AppShell activePage={activePage} space={space} searchQuery={searchQuery} searchResults={searchResults} searchInputRef={searchRef} loading={loading} inboxCount={inboxItems.length} onNavigate={setActivePage} onSpaceChange={setSpace} onSearchChange={setSearchQuery} onSearchFocus={() => undefined} onOpenSearchResult={openSearchResult} onQuickCapture={() => setModal("inbox")} onRefresh={() => void reload()}>{!isTauri() ? <div className="dev-banner"><span>预览模式</span> 当前页面使用空数据；运行 <code>npm run tauri dev</code> 连接本地 Workspace。</div> : null}{error ? <div className="error-banner"><span>!</span><span>{error}</span><button onClick={() => setError("")} aria-label="关闭提示">×</button></div> : null}{page}{modal ? <CreateModal kind={modal} space={createSpace} projects={projects} onClose={() => setModal(null)} onSave={(values) => handleCreate(modal, values)} /> : null}{paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} onSelect={selectPaletteCommand} /> : null}</AppShell>;
+  return <AppShell activePage={activePage} space={space} searchQuery={searchQuery} searchResults={searchResults} searchInputRef={searchRef} loading={loading} inboxCount={inboxItems.length} onNavigate={setActivePage} onSpaceChange={setSpace} onSearchChange={setSearchQuery} onSearchFocus={() => undefined} onOpenSearchResult={openSearchResult} onQuickCapture={() => setModal("inbox")} theme={theme} onThemeToggle={toggleAppTheme} onMinimizeToTray={() => void minimizeToTray()} onRefresh={() => void reload()}>{!isTauri() ? <div className="dev-banner"><span>预览模式</span> 当前页面使用空数据；运行 <code>npm run tauri dev</code> 连接本地 Workspace。</div> : null}{error ? <div className="error-banner"><span>!</span><span>{error}</span><button onClick={() => setError("")} aria-label="关闭提示">×</button></div> : null}{page}{modal ? <CreateModal kind={modal} space={createSpace} projects={projects} onClose={() => setModal(null)} onSave={(values) => handleCreate(modal, values)} /> : null}{paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} onSelect={selectPaletteCommand} /> : null}</AppShell>;
 }
 
 function errorMessage(cause: unknown) {
