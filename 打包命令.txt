@@ -1,0 +1,10 @@
+  - build-windows.ps1：生成 Windows NSIS 安装包
+  - build-linux.sh：生成 Linux AppImage 和 DEB 安装包
+
+  用法：
+
+  .\build-windows.ps1
+  .\build-windows.ps1 -Install
+
+  bash ./build-linux.sh
+  bash ./build-linux.sh --install
