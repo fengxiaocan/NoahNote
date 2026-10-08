@@ -10,7 +10,7 @@ interface PageHeaderProps {
 export function PageHeader({ eyebrow, title, description, action }: PageHeaderProps) {
   return (
     <div className="page-header">
-      <div>
+      <div className="page-header-copy">
         {eyebrow ? <div className="eyebrow">{eyebrow}</div> : null}
         <h1>{title}</h1>
         {description ? <p>{description}</p> : null}

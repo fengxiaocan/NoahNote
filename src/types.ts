@@ -79,6 +79,22 @@ export interface WikiLink {
 
 export type DocumentKind = "note" | "knowledge_page";
 
+export type SaveType = "auto" | "manual";
+
+export interface SaveRecord {
+  id: string;
+  entityId: string;
+  entityKind: DocumentKind;
+  title: string;
+  content: string;
+  createdAt: string;
+  revision: number;
+  saveType: SaveType;
+  charCount: number;
+  lineCount: number;
+  wordCount: number;
+}
+
 export interface DocumentVersion {
   id: string;
   entityId: string;

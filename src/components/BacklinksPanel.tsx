@@ -48,6 +48,6 @@ function LinkGroup({ title, links, direction, onOpen }: { title: string; links: 
     const targetId = direction === "outgoing" ? link.targetId : link.sourceId;
     const targetKind = direction === "outgoing" ? link.targetKind : link.sourceKind;
     const titleText = direction === "outgoing" ? link.targetTitle : link.sourceTitle;
-    return targetId && targetKind ? <button className="backlink-item" key={link.id} onClick={() => onOpen(targetId, targetKind)}><span>{direction === "outgoing" ? "↗" : "↙"}</span><strong>{titleText}</strong></button> : <div className="backlink-item is-unresolved" key={link.id}><span>?</span><strong>{titleText}</strong><small>未解析</small></div>;
+    return targetId && targetKind ? <button type="button" className="backlink-item" key={link.id} onClick={() => onOpen(targetId, targetKind)}><span>{direction === "outgoing" ? "↗" : "↙"}</span><strong>{titleText}</strong></button> : <div className="backlink-item is-unresolved" key={link.id}><span>?</span><strong>{titleText}</strong><small>未解析</small></div>;
   })}</div>}</div>;
 }

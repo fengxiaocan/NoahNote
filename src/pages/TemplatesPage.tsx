@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
-import type { Space, Template } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import type { Space, Template, TemplateKind } from "../types";
 import { PageHeader } from "../components/PageHeader";
 import type { CreateKind } from "../components/Modal";
 
-const kindLabels = { note: "笔记", task: "任务", project: "项目", checklist: "Checklist" } as const;
+const kindLabels: Record<TemplateKind, string> = {
+  note: "笔记",
+  task: "任务",
+  project: "项目",
+  checklist: "Checklist",
+};
 
 interface TemplatesPageProps {
   space: Space;
@@ -15,18 +20,312 @@ interface TemplatesPageProps {
   onUse: (template: Template) => void;
 }
 
-export function TemplatesPage({ space, templates, onCreate, onUpdate, onArchive, onDelete, onUse }: TemplatesPageProps) {
+export function TemplatesPage({
+  space,
+  templates,
+  onCreate,
+  onUpdate,
+  onArchive,
+  onDelete,
+  onUse,
+}: TemplatesPageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = templates.find((template) => template.id === selectedId) ?? templates[0] ?? null;
-  return <div className="page-stack templates-page"><PageHeader eyebrow="减少重复决定" title="模板" description={(space === "all" ? "全部空间" : space === "personal" ? "个人空间" : "工作空间") + " · 把常用结构保存下来"} action={<button className="button primary" onClick={() => onCreate("template")}>＋ 新建模板</button>} /><div className="templates-layout"><section className="list-panel template-list-panel"><div className="list-panel-heading"><span>{templates.length} 个模板</span><span className="muted">选中后使用</span></div>{templates.length === 0 ? <div className="large-empty"><div className="large-empty-icon">▱</div><h3>还没有模板</h3><p>从一次会议纪要或发布流程开始。</p><button className="button secondary" onClick={() => onCreate("template")}>创建模板</button></div> : <div className="template-list">{templates.map((template) => <button className={"template-list-item " + (selected?.id === template.id ? "is-selected" : "")} key={template.id} onClick={() => setSelectedId(template.id)}><span className={"template-kind " + template.kind}>{kindLabels[template.kind]}</span><span><strong>{template.name}</strong><small>{template.description || "暂无说明"}</small></span></button>)}</div>}</section>{selected ? <TemplateEditor template={selected} onUpdate={onUpdate} onArchive={onArchive} onDelete={onDelete} onUse={onUse} /> : <div className="project-detail-placeholder"><div className="placeholder-glyph">▱</div><h3>选择一个模板</h3><p>从模板快速创建一份新的内容。</p></div>}</div></div>;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<"all" | TemplateKind>("all");
+
+  const filteredTemplates = useMemo(() => {
+    return templates.filter((template) => {
+      if (kindFilter !== "all" && template.kind !== kindFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchName = template.name.toLowerCase().includes(q);
+        const matchDesc = template.description?.toLowerCase().includes(q);
+        const matchKind = kindLabels[template.kind].toLowerCase().includes(q);
+        if (!matchName && !matchDesc && !matchKind) return false;
+      }
+      return true;
+    });
+  }, [templates, kindFilter, searchQuery]);
+
+  const selected =
+    templates.find((template) => template.id === selectedId) ??
+    filteredTemplates[0] ??
+    templates[0] ??
+    null;
+
+  return (
+    <div className="page-stack templates-page">
+      <PageHeader
+        eyebrow="减少重复决定"
+        title="模板"
+        description={`${space === "all" ? "全部空间" : space === "personal" ? "个人空间" : "工作空间"} · 把常用结构保存下来`}
+        action={
+          <button type="button" className="button primary" onClick={() => onCreate("template")}>
+            ＋ 新建模板
+          </button>
+        }
+      />
+
+      <div className="templates-layout">
+        <section className="list-panel template-list-panel">
+          <div className="template-panel-header">
+            <div className="template-panel-title-area">
+              <span className="template-panel-title">我的模板</span>
+              <span className="template-count-badge" title="当前显示的模板数量">
+                {filteredTemplates.length}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="template-add-quick-btn"
+              onClick={() => onCreate("template")}
+              title="新建模板"
+            >
+              <span className="plus-sign">＋</span>
+              <span>新建</span>
+            </button>
+          </div>
+
+          <div className="template-panel-top">
+            <div className="template-search-box">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索模板名称、说明或类型..."
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="clear-search-btn"
+                  onClick={() => setSearchQuery("")}
+                  title="清除搜索"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+            <div className="template-filter-pills">
+              {(
+                [
+                  ["all", "全部"],
+                  ["note", "笔记"],
+                  ["task", "任务"],
+                  ["project", "项目"],
+                  ["checklist", "清单"],
+                ] as const
+              ).map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  className={`pill-btn ${kindFilter === val ? "is-active" : ""}`}
+                  onClick={() => setKindFilter(val)}
+                >
+                  <span className="pill-text">{label}</span>
+                  <span className="pill-count">
+                    {val === "all"
+                      ? templates.length
+                      : templates.filter((t) => t.kind === val).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="template-list-scroll">
+            {templates.length === 0 ? (
+              <div className="large-empty">
+                <div className="large-empty-icon">▱</div>
+                <h3>还没有模板</h3>
+                <p>从一次会议纪要或发布流程开始。</p>
+                <button type="button" className="button primary" onClick={() => onCreate("template")}>
+                  ＋ 新建模板
+                </button>
+              </div>
+            ) : filteredTemplates.length === 0 ? (
+              <div className="compact-empty">
+                <span>🔍</span>
+                <p>未找到符合条件的模板</p>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    setKindFilter("all");
+                    setSearchQuery("");
+                  }}
+                >
+                  清除筛选条件
+                </button>
+              </div>
+            ) : (
+              <div className="template-list">
+                {filteredTemplates.map((template) => {
+                  const isSelected = selected?.id === template.id;
+                  return (
+                    <div
+                      key={template.id}
+                      className={`template-list-item ${isSelected ? "is-selected" : ""}`}
+                      onClick={() => setSelectedId(template.id)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="template-item-header">
+                        <span className={`template-kind-pill ${template.kind}`}>
+                          {kindLabels[template.kind]}
+                        </span>
+                        <strong className="template-item-title" title={template.name}>
+                          {template.name}
+                        </strong>
+                        <button
+                          type="button"
+                          className="template-use-quick-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUse(template);
+                          }}
+                          title="使用此模板创建内容"
+                        >
+                          使用 →
+                        </button>
+                      </div>
+
+                      <p className="template-item-desc" title={template.description || "暂无说明"}>
+                        {template.description || "暂无说明"}
+                      </p>
+
+                      <div className="template-item-footer">
+                        <span className="template-payload-meta">
+                          {Object.keys(template.payload || {}).length} 个默认字段
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {selected ? (
+          <TemplateEditor
+            template={selected}
+            onUpdate={onUpdate}
+            onArchive={onArchive}
+            onDelete={onDelete}
+            onUse={onUse}
+          />
+        ) : (
+          <div className="project-detail-placeholder">
+            <div className="placeholder-glyph">▱</div>
+            <h3>选择一个模板</h3>
+            <p>从模板快速创建一份新的内容。</p>
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => onCreate("template")}
+            >
+              ＋ 新建模板
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function TemplateEditor({ template, onUpdate, onArchive, onDelete, onUse }: { template: Template; onUpdate: (template: Template) => void; onArchive: (template: Template) => void; onDelete: (template: Template) => Promise<void>; onUse: (template: Template) => void }) {
+function TemplateEditor({
+  template,
+  onUpdate,
+  onArchive,
+  onDelete,
+  onUse,
+}: {
+  template: Template;
+  onUpdate: (template: Template) => void;
+  onArchive: (template: Template) => void;
+  onDelete: (template: Template) => Promise<void>;
+  onUse: (template: Template) => void;
+}) {
   const [name, setName] = useState(template.name);
   const [description, setDescription] = useState(template.description);
   const [payloadText, setPayloadText] = useState(JSON.stringify(template.payload, null, 2));
   const [error, setError] = useState("");
-  useEffect(() => { setName(template.name); setDescription(template.description); setPayloadText(JSON.stringify(template.payload, null, 2)); setError(""); }, [template.id, template.name, template.description, template.payload]);
-  const save = () => { try { const payload = JSON.parse(payloadText) as Record<string, unknown>; setError(""); onUpdate({ ...template, name: name.trim() || template.name, description, payload }); } catch { setError("默认内容必须是有效的 JSON 对象"); } };
-  return <section className="template-editor list-panel"><div className="checklist-editor-heading"><div><span className={"template-kind " + template.kind}>{kindLabels[template.kind]}</span><h2>模板内容</h2></div><div className="editor-actions"><button className="small-button subtle" onClick={() => onArchive(template)}>归档</button><button className="small-button subtle danger" onClick={() => void onDelete(template)}>删除</button><button className="button secondary compact" onClick={() => onUse(template)}>使用模板</button><button className="button primary compact" onClick={save}>保存</button></div></div><label>模板名称<input className="checklist-title-input" value={name} onChange={(event) => setName(event.target.value)} /></label><label>说明<textarea className="checklist-description-input" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} /></label><label>默认内容（JSON）<textarea className="template-json-input" value={payloadText} onChange={(event) => setPayloadText(event.target.value)} rows={14} spellCheck={false} /></label>{error ? <div className="form-error">{error}</div> : null}<p className="muted">模板创建时会自动替换目标空间；可用字段取决于模板类型。</p></section>;
+
+  useEffect(() => {
+    setName(template.name);
+    setDescription(template.description);
+    setPayloadText(JSON.stringify(template.payload, null, 2));
+    setError("");
+  }, [template.id, template.name, template.description, template.payload]);
+
+  const save = () => {
+    try {
+      const payload = JSON.parse(payloadText) as Record<string, unknown>;
+      setError("");
+      onUpdate({ ...template, name: name.trim() || template.name, description, payload });
+    } catch {
+      setError("默认内容必须是有效的 JSON 对象");
+    }
+  };
+
+  return (
+    <section className="template-editor list-panel">
+      <div className="checklist-editor-heading">
+        <div className="heading-title-group">
+          <div className="heading-actions">
+            <span className={`template-kind ${template.kind}`}>{kindLabels[template.kind]}</span>
+            <span className="card-kicker">
+              {template.space === "personal" ? "个人空间" : "工作空间"} · 模板
+            </span>
+          </div>
+          <h2>{name || "未命名模板"}</h2>
+        </div>
+        <div className="editor-actions">
+          <button type="button" className="small-button subtle" onClick={() => onArchive(template)}>
+            归档
+          </button>
+          <button type="button" className="small-button subtle danger" onClick={() => void onDelete(template)}>
+            删除
+          </button>
+          <button type="button" className="button secondary compact" onClick={() => onUse(template)}>
+            使用模板
+          </button>
+          <button type="button" className="button primary compact" onClick={save}>
+            保存
+          </button>
+        </div>
+      </div>
+      <label>
+        模板名称
+        <input
+          className="checklist-title-input"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+      </label>
+      <label>
+        说明
+        <textarea
+          className="checklist-description-input"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={3}
+        />
+      </label>
+      <label>
+        默认内容（JSON）
+        <textarea
+          className="template-json-input"
+          value={payloadText}
+          onChange={(event) => setPayloadText(event.target.value)}
+          rows={14}
+          spellCheck={false}
+        />
+      </label>
+      {error ? <div className="form-error">{error}</div> : null}
+      <p className="muted">模板创建时会自动替换目标空间；可用字段取决于模板类型。</p>
+    </section>
+  );
 }

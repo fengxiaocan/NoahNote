@@ -55,7 +55,7 @@ export function SparksPage({ space, items, selectedId, onCreate, onStageChange, 
         eyebrow="捕捉灵感，留给未来"
         title="思维灵光"
         description={`${spaceLabel} · 不急着整理成完整笔记，先把脑海里闪过的东西留下来。`}
-        action={<button className="button primary" onClick={() => onCreate("spark")}>✦ 记录灵光</button>}
+        action={<button type="button" className="button primary" onClick={() => onCreate("spark")}>✦ 记录灵光</button>}
       />
 
       <section className="spark-intro">
@@ -74,7 +74,7 @@ export function SparksPage({ space, items, selectedId, onCreate, onStageChange, 
         <div className="filter-tabs" role="tablist" aria-label="灵光状态筛选">
           {filters.map((item) => {
             const count = item.id === "all" ? items.length : items.filter((spark) => stageOf(spark) === item.id).length;
-            return <button className={filter === item.id ? "is-active" : ""} key={item.id} onClick={() => setFilter(item.id)} role="tab" aria-selected={filter === item.id}>{item.label}<span>{count}</span></button>;
+            return <button type="button" className={filter === item.id ? "is-active" : ""} key={item.id} onClick={() => setFilter(item.id)} role="tab" aria-selected={filter === item.id}>{item.label}<span>{count}</span></button>;
           })}
         </div>
         <span className="muted">按最近记录排序</span>
@@ -87,42 +87,117 @@ export function SparksPage({ space, items, selectedId, onCreate, onStageChange, 
             <div className="large-empty-icon">✦</div>
             <h3>{filter === "all" ? "还没有记录灵光" : `暂无“${stageLabels[filter]}”的想法`}</h3>
             <p>{filter === "all" ? "下一次想到什么，先把它留在这里。" : stageDescriptions[filter]}</p>
-            <button className="button secondary" onClick={() => onCreate("spark")}>记录一条灵光</button>
+            <button type="button" className="button secondary" onClick={() => onCreate("spark")}>记录一条灵光</button>
           </div>
         ) : (
           <div className="spark-list">
             {visibleItems.map((item) => {
               const stage = stageOf(item);
               return (
-                  <article id={`spark-${item.id}`} className={`spark-card ${stage} ${item.id === selectedId ? "is-selected" : ""}`} key={item.id}>
-                  <div className="spark-card-main">
-                    <div className="spark-card-top">
-                      <span className="spark-symbol" aria-hidden="true">✦</span>
+                <article
+                  id={`spark-${item.id}`}
+                  className={`spark-card ${stage} ${item.id === selectedId ? "is-selected" : ""}`}
+                  key={item.id}
+                >
+                  <div className="spark-card-header">
+                    <div className="spark-card-header-left">
+                      <span className="spark-symbol" aria-hidden="true">
+                        ✦
+                      </span>
                       <span className={`spark-stage ${stage}`}>{stageLabels[stage]}</span>
+                      <span className="spark-space-pill">
+                        {item.space === "personal" ? "个人" : "工作"}
+                      </span>
+                    </div>
+                    <div className="spark-card-header-right">
+                      <label className="spark-stage-control">
+                        <span>状态:</span>
+                        <select
+                          aria-label={`修改“${item.title}”的状态`}
+                          value={stage}
+                          onChange={(event) =>
+                            onStageChange(item, event.target.value as SparkStage)
+                          }
+                        >
+                          {filters
+                            .filter((option) => option.id !== "all")
+                            .map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
                       <time>{formatRelative(item.createdAt)}</time>
                     </div>
-                    <h3>{item.title}</h3>
-                    {item.body ? <p>{item.body}</p> : null}
-                    <div className="item-meta">
-                      <span>{item.space === "personal" ? "个人" : "工作"}</span>
-                      {item.tags.map((tag) => <span className="tag" key={tag}>#{tag}</span>)}
-                    </div>
                   </div>
-                  <div className="spark-card-actions">
-                    <label className="spark-stage-control">
-                      <span>状态</span>
-                      <select aria-label={`修改“${item.title}”的状态`} value={stage} onChange={(event) => onStageChange(item, event.target.value as SparkStage)}>
-                        {filters.filter((option) => option.id !== "all").map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                      </select>
-                    </label>
-                    {stage !== "converted" ? <>
-                      <button className="small-button" onClick={() => onPromote(item, "task")}>转为任务</button>
-                      <button className="small-button" onClick={() => onPromote(item, "note")}>转为笔记</button>
-                    </> : <span className="spark-converted-hint">已保留原始灵光</span>}
-                    {item.space !== "personal" ? <button className="small-button subtle" onClick={() => onMove(item, "personal")}>移到个人</button> : null}
-                    {item.space !== "work" ? <button className="small-button subtle" onClick={() => onMove(item, "work")}>移到工作</button> : null}
-                    <button className="small-button subtle" onClick={() => onArchive(item)}>归档</button>
-                    <button className="small-button subtle danger" onClick={() => void onDelete(item)}>删除</button>
+
+                  <h3 className="spark-card-title">{item.title}</h3>
+                  {item.body ? <p className="spark-card-body">{item.body}</p> : null}
+
+                  <div className="spark-card-footer">
+                    <div className="spark-tags-group">
+                      {item.tags.map((tag) => (
+                        <span className="tag mini" key={tag}>
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="spark-card-actions">
+                      {stage !== "converted" ? (
+                        <>
+                          <button
+                            type="button"
+                            className="small-button"
+                            onClick={() => onPromote(item, "task")}
+                          >
+                            转为任务
+                          </button>
+                          <button
+                            type="button"
+                            className="small-button"
+                            onClick={() => onPromote(item, "note")}
+                          >
+                            转为笔记
+                          </button>
+                        </>
+                      ) : (
+                        <span className="spark-converted-hint">✓ 已转为行动</span>
+                      )}
+                      {item.space !== "personal" && (
+                        <button
+                          type="button"
+                          className="small-button subtle"
+                          onClick={() => onMove(item, "personal")}
+                        >
+                          移到个人
+                        </button>
+                      )}
+                      {item.space !== "work" && (
+                        <button
+                          type="button"
+                          className="small-button subtle"
+                          onClick={() => onMove(item, "work")}
+                        >
+                          移到工作
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="small-button subtle"
+                        onClick={() => onArchive(item)}
+                      >
+                        归档
+                      </button>
+                      <button
+                        type="button"
+                        className="small-button subtle danger"
+                        onClick={() => void onDelete(item)}
+                      >
+                        删除
+                      </button>
+                    </div>
                   </div>
                 </article>
               );

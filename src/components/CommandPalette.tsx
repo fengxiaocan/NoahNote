@@ -6,7 +6,7 @@ export type PaletteCommand = {
   label: string;
   description: string;
   shortcut?: string;
-  action: "note" | "task" | "project" | "inbox" | "spark" | "checklist" | "template" | "event" | "sync" | "sync-status" | "sync-log" | PageId;
+  action: "note" | "task" | "project" | "inbox" | "spark" | "checklist" | "template" | "event" | "sync" | "sync-status" | "sync-log" | "toggle-sidebar" | PageId;
 };
 
 interface CommandPaletteProps {
@@ -18,6 +18,7 @@ export function CommandPalette({ onClose, onSelect }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const commands: PaletteCommand[] = useMemo(() => [
+    { id: "toggle-sidebar", label: "展开/隐藏侧边栏", description: "展开或收起左侧导航以获得更大工作视野", shortcut: "Ctrl \\", action: "toggle-sidebar" },
     { id: "new-note", label: "新建笔记", description: "记录一个想法或一段 Markdown", shortcut: "Ctrl ⇧ N", action: "note" },
     { id: "new-task", label: "新建任务", description: "把下一步变成可执行的任务", shortcut: "Ctrl ⇧ T", action: "task" },
     { id: "new-event", label: "新建日程", description: "把会议或行动安排到具体时间", action: "event" },
@@ -56,5 +57,5 @@ export function CommandPalette({ onClose, onSelect }: CommandPaletteProps) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeIndex, filtered, onClose, onSelect]);
-  return <div className="modal-backdrop command-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="command-card"><div className="command-input-wrap"><span>⌘</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入命令或搜索功能…" /></div><div className="command-list">{filtered.length === 0 ? <div className="command-empty">没有匹配的命令</div> : filtered.map((command, index) => <button className={["command-row", index === activeIndex ? "is-active" : ""].join(" ")} key={command.id} onClick={() => onSelect(command)}><span className="command-symbol">{command.action === "note" ? "▤" : command.action === "task" ? "✓" : command.action === "project" ? "◆" : command.action === "inbox" ? "▣" : command.action === "spark" || command.action === "sparks" ? "✦" : "→"}</span><span className="command-copy"><strong>{command.label}</strong><small>{command.description}</small></span>{command.shortcut ? <kbd>{command.shortcut}</kbd> : null}</button>)}</div><div className="command-footer"><span>↑↓ 选择</span><span>Enter 执行</span><span>Esc 关闭</span></div></div></div>;
+  return <div className="modal-backdrop command-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="command-card"><div className="command-input-wrap"><span>⌘</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入命令或搜索功能…" /></div><div className="command-list">{filtered.length === 0 ? <div className="command-empty">没有匹配的命令</div> : filtered.map((command, index) => <button type="button" className={["command-row", index === activeIndex ? "is-active" : ""].join(" ")} key={command.id} onClick={() => onSelect(command)}><span className="command-symbol">{command.action === "note" ? "▤" : command.action === "task" ? "✓" : command.action === "project" ? "◆" : command.action === "inbox" ? "▣" : command.action === "spark" || command.action === "sparks" ? "✦" : "→"}</span><span className="command-copy"><strong>{command.label}</strong><small>{command.description}</small></span>{command.shortcut ? <kbd>{command.shortcut}</kbd> : null}</button>)}</div><div className="command-footer"><span>↑↓ 选择</span><span>Enter 执行</span><span>Esc 关闭</span></div></div></div>;
 }
