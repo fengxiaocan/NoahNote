@@ -1,8 +1,11 @@
+import { Button, DialogLayer, IconButton, SelectField, SegmentButton, SegmentedControl, TextArea, TextField } from "../components/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { ScheduleEvent, Space, Task, Project } from "../types";
 import type { ScheduleEventInput } from "../lib/api";
 import { parseTags } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
+import { SpaceMoveButton } from "../components/SpaceMoveButton";
+import type { ContentSpace } from "../types";
 
 type CalendarView = "day" | "week" | "month" | "list";
 
@@ -63,10 +66,10 @@ export function SchedulePage({ space, createSpace, events, tasks, projects, crea
 
   return (
     <div className="page-stack schedule-page">
-      <PageHeader eyebrow="时间组织" title="日程" description={`${space === "all" ? "全部空间" : space === "personal" ? "个人空间" : "工作空间"} · 把任务放进可以执行的时间里`} action={<button className="button primary" onClick={() => setEditor({ date: anchor })}>＋ 新建日程</button>} />
+      <PageHeader eyebrow="时间组织" title="日程" description={`${space === "all" ? "全部空间" : space === "personal" ? "个人空间" : "工作空间"} · 把任务放进可以执行的时间里`} action={<Button variant="primary" onClick={() => setEditor({ date: anchor })}>＋ 新建日程</Button>} />
       <section className="calendar-toolbar">
-        <div className="calendar-heading"><button className="icon-button" onClick={() => shift(-1)} aria-label="上一个时间段">‹</button><strong>{heading}</strong><button className="icon-button" onClick={() => shift(1)} aria-label="下一个时间段">›</button><button className="small-button" onClick={() => setAnchor(todayKey())}>今天</button></div>
-        <div className="calendar-view-tabs">{([ ["day", "日"], ["week", "周"], ["month", "月"], ["list", "列表"] ] as const).map(([value, label]) => <button className={view === value ? "is-active" : ""} key={value} onClick={() => setView(value)}>{label}</button>)}</div>
+        <div className="calendar-heading"><IconButton onClick={() => shift(-1)} label="上一个时间段">‹</IconButton><strong>{heading}</strong><IconButton onClick={() => shift(1)} label="下一个时间段">›</IconButton><Button size="small" onClick={() => setAnchor(todayKey())}>今天</Button></div>
+        <SegmentedControl className="calendar-view-tabs" label="日程视图" variant="surface">{([ ["day", "日"], ["week", "周"], ["month", "月"], ["list", "列表"] ] as const).map(([value, label]) => <SegmentButton selected={view === value} key={value} onClick={() => setView(value)}>{label}</SegmentButton>)}</SegmentedControl>
       </section>
       {view === "day" ? <DayView date={anchor} events={visibleEvents} onSelect={(event) => setEditor({ event, date: event.date })} onCreate={() => setEditor({ date: anchor })} /> : null}
       {view === "week" ? <WeekView days={week} events={visibleEvents} onSelect={(event) => setEditor({ event, date: event.date })} onCreate={(date) => setEditor({ date })} /> : null}
@@ -92,7 +95,7 @@ function MonthView({ days, events, onSelect, onCreate, anchor }: { days: Date[];
 
 function ListView({ events, onSelect, onCreate }: { events: ScheduleEvent[]; onSelect: (event: ScheduleEvent) => void; onCreate: () => void }) {
   const grouped = events.reduce<Record<string, ScheduleEvent[]>>((result, event) => { (result[event.date] ??= []).push(event); return result; }, {});
-  return <section className="calendar-panel"><div className="calendar-panel-heading"><div><span className="card-kicker">全部日程</span><h2>{events.length} 个事件</h2></div><button className="small-button" onClick={onCreate}>＋ 新建</button></div>{events.length === 0 ? <CalendarEmpty onCreate={onCreate} /> : <div className="event-groups">{Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([date, dateEvents]) => <div className="event-group" key={date}><div className="event-group-date"><strong>{shortDate(parseDate(date))}</strong><span>{formatWeekday(date)}</span></div><div className="event-list">{dateEvents.map((event) => <EventCard key={event.id} event={event} onClick={() => onSelect(event)} />)}</div></div>)}</div>}</section>;
+  return <section className="calendar-panel"><div className="calendar-panel-heading"><div><span className="card-kicker">全部日程</span><h2>{events.length} 个事件</h2></div><Button size="small" variant="secondary" onClick={onCreate}>＋ 新建</Button></div>{events.length === 0 ? <CalendarEmpty onCreate={onCreate} /> : <div className="event-groups">{Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([date, dateEvents]) => <div className="event-group" key={date}><div className="event-group-date"><strong>{shortDate(parseDate(date))}</strong><span>{formatWeekday(date)}</span></div><div className="event-list">{dateEvents.map((event) => <EventCard key={event.id} event={event} onClick={() => onSelect(event)} />)}</div></div>)}</div>}</section>;
 }
 
 function EventCard({ event, compact = false, onClick }: { event: ScheduleEvent; compact?: boolean; onClick: () => void }) {
@@ -100,7 +103,7 @@ function EventCard({ event, compact = false, onClick }: { event: ScheduleEvent; 
 }
 
 function CalendarEmpty({ onCreate }: { onCreate: () => void }) {
-  return <div className="calendar-empty"><span>◷</span><h3>这段时间还没有日程</h3><p>把一个任务放进时间里，给今天一个清晰的下一步。</p><button className="button secondary" onClick={onCreate}>创建日程</button></div>;
+  return <div className="calendar-empty"><span>◷</span><h3>这段时间还没有日程</h3><p>把一个任务放进时间里，给今天一个清晰的下一步。</p><Button variant="secondary" onClick={onCreate}>创建日程</Button></div>;
 }
 
 function ScheduleEventEditor({ event, date, space, tasks, projects, onClose, onSave, onArchive, onDelete }: { event?: ScheduleEvent; date: string; space: "personal" | "work"; tasks: Task[]; projects: Project[]; onClose: () => void; onSave: (draft: ScheduleEventInput) => Promise<void>; onArchive?: () => void; onDelete?: () => Promise<void> }) {
@@ -124,7 +127,16 @@ function ScheduleEventEditor({ event, date, space, tasks, projects, onClose, onS
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><form className="modal-card schedule-editor" onSubmit={submit}><div className="modal-heading"><div><span className="eyebrow">{event ? "编辑日程" : "新建日程"}</span><h2>{event ? event.title : "安排一个时间"}</h2></div><button type="button" className="close-button" onClick={onClose} aria-label="关闭">×</button></div><label>标题<input autoFocus value={title} onChange={(inputEvent) => setTitle(inputEvent.target.value)} placeholder="例如：产品评审" /></label><div className="form-grid"><label>日期<input type="date" value={eventDate} onChange={(inputEvent) => { setEventDate(inputEvent.target.value); inputEvent.currentTarget.blur(); }} /></label><label className="checkbox-label"><input type="checkbox" checked={allDay} onChange={(inputEvent) => setAllDay(inputEvent.target.checked)} />全天事件</label></div>{!allDay ? <div className="form-grid"><label>开始时间<input type="time" value={startTime} onChange={(inputEvent) => setStartTime(inputEvent.target.value)} /></label><label>结束时间<input type="time" value={endTime} onChange={(inputEvent) => setEndTime(inputEvent.target.value)} /></label></div> : null}<label>备注<textarea value={notes} onChange={(inputEvent) => setNotes(inputEvent.target.value)} placeholder="这次日程要完成什么？" rows={4} /></label><div className="form-grid"><label>关联任务<select value={taskId} onChange={(inputEvent) => setTaskId(inputEvent.target.value)}><option value="">不关联任务</option>{tasks.filter((task) => task.space === space && task.status !== "cancelled").map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label><label>关联项目<select value={projectId} onChange={(inputEvent) => setProjectId(inputEvent.target.value)}><option value="">不关联项目</option>{projects.filter((project) => project.space === space).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label></div><label>标签<input value={tags} onChange={(inputEvent) => setTags(inputEvent.target.value)} placeholder="#评审  #本周" /></label>{error ? <div className="form-error">{error}</div> : null}<div className="modal-actions">{onArchive ? <button type="button" className="small-button subtle" onClick={onArchive}>归档</button> : null}{onDelete ? <button type="button" className="small-button subtle danger" onClick={() => void onDelete()}>删除</button> : null}<span /><button type="button" className="button secondary" onClick={onClose}>取消</button><button type="submit" className="button primary">保存</button></div></form></div>;
+  const moveSpace = async (nextSpace: ContentSpace) => {
+    if (!event) return;
+    setError("");
+    try {
+      await onSave({ title: title.trim() || event.title, date: eventDate, startTime: allDay ? null : startTime, endTime: allDay ? null : endTime, allDay, notes, taskId: taskId || null, projectId: projectId || null, space: nextSpace, tags: parseTags(tags) });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+  return <DialogLayer onClose={onClose}><form className="modal-card schedule-editor" role="dialog" aria-modal="true" aria-labelledby="schedule-editor-title" onSubmit={submit}><div className="modal-heading"><div><span className="eyebrow">{event ? "编辑日程" : "新建日程"}</span><h2 id="schedule-editor-title">{event ? event.title : "安排一个时间"}</h2></div><IconButton className="close-button" label="关闭" onClick={onClose}>×</IconButton></div><label>标题<TextField autoFocus value={title} onChange={(inputEvent) => setTitle(inputEvent.target.value)} placeholder="例如：产品评审" /></label><div className="form-grid"><label>日期<TextField type="date" value={eventDate} onChange={(inputEvent) => { setEventDate(inputEvent.target.value); inputEvent.currentTarget.blur(); }} /></label><label className="checkbox-label"><input type="checkbox" checked={allDay} onChange={(inputEvent) => setAllDay(inputEvent.target.checked)} />全天事件</label></div>{!allDay ? <div className="form-grid"><label>开始时间<TextField type="time" value={startTime} onChange={(inputEvent) => setStartTime(inputEvent.target.value)} /></label><label>结束时间<TextField type="time" value={endTime} onChange={(inputEvent) => setEndTime(inputEvent.target.value)} /></label></div> : null}<label>备注<TextArea value={notes} onChange={(inputEvent) => setNotes(inputEvent.target.value)} placeholder="这次日程要完成什么？" rows={4} /></label><div className="form-grid"><label>关联任务<SelectField value={taskId} onChange={(inputEvent) => setTaskId(inputEvent.target.value)}><option value="">不关联任务</option>{tasks.filter((task) => task.space === space && task.status !== "cancelled").map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</SelectField></label><label>关联项目<SelectField value={projectId} onChange={(inputEvent) => setProjectId(inputEvent.target.value)}><option value="">不关联项目</option>{projects.filter((project) => project.space === space).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</SelectField></label></div><label>标签<TextField value={tags} onChange={(inputEvent) => setTags(inputEvent.target.value)} placeholder="#评审  #本周" /></label>{error ? <div className="form-error">{error}</div> : null}<div className="modal-actions">{event ? <SpaceMoveButton space={event.space} onMove={moveSpace} /> : null}{onArchive ? <Button size="small" variant="subtle" onClick={onArchive}>归档</Button> : null}{onDelete ? <Button size="small" variant="danger" onClick={() => void onDelete()}>删除</Button> : null}<span /><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" variant="primary">保存</Button></div></form></DialogLayer>;
 }
 
 function eventSort(a: ScheduleEvent, b: ScheduleEvent) { return `${a.date}-${a.startTime ?? "00:00"}`.localeCompare(`${b.date}-${b.startTime ?? "00:00"}`); }

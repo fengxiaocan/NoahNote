@@ -1,3 +1,4 @@
+import { Button, SegmentButton, SegmentedControl, EmptyState } from "../components/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { InboxItem, SparkStage, Space } from "../types";
 import { formatRelative } from "../lib/format";
@@ -55,7 +56,7 @@ export function SparksPage({ space, items, selectedId, onCreate, onStageChange, 
         eyebrow="捕捉灵感，留给未来"
         title="思维灵光"
         description={`${spaceLabel} · 不急着整理成完整笔记，先把脑海里闪过的东西留下来。`}
-        action={<button className="button primary" onClick={() => onCreate("spark")}>✦ 记录灵光</button>}
+        action={<Button variant="primary" onClick={() => onCreate("spark")}>✦ 记录灵光</Button>}
       />
 
       <section className="spark-intro">
@@ -71,24 +72,24 @@ export function SparksPage({ space, items, selectedId, onCreate, onStageChange, 
       </section>
 
       <div className="task-toolbar spark-toolbar">
-        <div className="filter-tabs" role="tablist" aria-label="灵光状态筛选">
+        <SegmentedControl className="filter-tabs" label="灵光状态筛选">
           {filters.map((item) => {
             const count = item.id === "all" ? items.length : items.filter((spark) => stageOf(spark) === item.id).length;
-            return <button className={filter === item.id ? "is-active" : ""} key={item.id} onClick={() => setFilter(item.id)} role="tab" aria-selected={filter === item.id}>{item.label}<span>{count}</span></button>;
+            return <SegmentButton selected={filter === item.id} key={item.id} onClick={() => setFilter(item.id)}>{item.label}<span>{count}</span></SegmentButton>;
           })}
-        </div>
+        </SegmentedControl>
         <span className="muted">按最近记录排序</span>
       </div>
 
       <section className="list-panel">
         <div className="list-panel-heading"><span>{filter === "all" ? "全部灵光" : stageLabels[filter]}</span><span className="muted">{visibleItems.length} 条</span></div>
         {visibleItems.length === 0 ? (
-          <div className="large-empty">
+          <EmptyState size="large">
             <div className="large-empty-icon">✦</div>
             <h3>{filter === "all" ? "还没有记录灵光" : `暂无“${stageLabels[filter]}”的想法`}</h3>
             <p>{filter === "all" ? "下一次想到什么，先把它留在这里。" : stageDescriptions[filter]}</p>
-            <button className="button secondary" onClick={() => onCreate("spark")}>记录一条灵光</button>
-          </div>
+            <Button variant="secondary" onClick={() => onCreate("spark")}>记录一条灵光</Button>
+          </EmptyState>
         ) : (
           <div className="spark-list">
             {visibleItems.map((item) => {
@@ -116,13 +117,13 @@ export function SparksPage({ space, items, selectedId, onCreate, onStageChange, 
                       </select>
                     </label>
                     {stage !== "converted" ? <>
-                      <button className="small-button" onClick={() => onPromote(item, "task")}>转为任务</button>
-                      <button className="small-button" onClick={() => onPromote(item, "note")}>转为笔记</button>
+                      <Button size="small" variant="secondary" onClick={() => onPromote(item, "task")}>转为任务</Button>
+                      <Button size="small" variant="secondary" onClick={() => onPromote(item, "note")}>转为笔记</Button>
                     </> : <span className="spark-converted-hint">已保留原始灵光</span>}
-                    {item.space !== "personal" ? <button className="small-button subtle" onClick={() => onMove(item, "personal")}>移到个人</button> : null}
-                    {item.space !== "work" ? <button className="small-button subtle" onClick={() => onMove(item, "work")}>移到工作</button> : null}
-                    <button className="small-button subtle" onClick={() => onArchive(item)}>归档</button>
-                    <button className="small-button subtle danger" onClick={() => void onDelete(item)}>删除</button>
+                    {item.space !== "personal" ? <Button size="small" variant="subtle" onClick={() => onMove(item, "personal")}>移到个人</Button> : null}
+                    {item.space !== "work" ? <Button size="small" variant="subtle" onClick={() => onMove(item, "work")}>移到工作</Button> : null}
+                    <Button size="small" variant="subtle" onClick={() => onArchive(item)}>归档</Button>
+                    <Button size="small" variant="danger" onClick={() => void onDelete(item)}>删除</Button>
                   </div>
                 </article>
               );

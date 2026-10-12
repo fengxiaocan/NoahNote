@@ -1,10 +1,13 @@
+import { Button, LoadingState, SelectableListItem, EmptyState } from "../components/ui";
 import { useEffect, useMemo, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { AiPanel } from "../components/AiPanel";
+import { useAppDialogs } from "../components/AppDialogs";
 import { PageHeader } from "../components/PageHeader";
+import { SpaceMoveButton } from "../components/SpaceMoveButton";
 import { api, isTauri } from "../lib/api";
 import { formatDate, formatRelative } from "../lib/format";
-import type { PdfDocument, SearchResult, Space } from "../types";
+import type { ContentSpace, PdfDocument, SearchResult, Space } from "../types";
 
 interface DocumentsPageProps {
   space: Space;
@@ -15,9 +18,11 @@ interface DocumentsPageProps {
   onExport: (document: PdfDocument, targetPath: string) => Promise<void>;
   onOcr: (document: PdfDocument) => Promise<void>;
   onDelete: (document: PdfDocument) => Promise<void>;
+  onMoveSpace: (document: PdfDocument, space: ContentSpace) => Promise<unknown>;
 }
 
-export function DocumentsPage({ space, documents, selectedId, onSelect, onImport, onExport, onOcr, onDelete }: DocumentsPageProps) {
+export function DocumentsPage({ space, documents, selectedId, onSelect, onImport, onExport, onOcr, onDelete, onMoveSpace }: DocumentsPageProps) {
+  const { confirm } = useAppDialogs();
   const [pdfData, setPdfData] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [semanticQuery, setSemanticQuery] = useState("");
@@ -76,12 +81,12 @@ export function DocumentsPage({ space, documents, selectedId, onSelect, onImport
   };
 
   return <div className="page-stack documents-page">
-    <PageHeader eyebrow="文件与检索" title="PDF 文档" description={`${documents.length} 份本地 PDF · 原文件、文本索引与 OCR 状态集中管理`} action={<button className="button primary" onClick={() => void importPdf()}>＋ 导入 PDF</button>} />
+    <PageHeader eyebrow="文件与检索" title="PDF 文档" description={`${documents.length} 份本地 PDF · 原文件、文本索引与 OCR 状态集中管理`} action={<Button variant="primary" onClick={() => void importPdf()}>＋ 导入 PDF</Button>} />
     <div className="semantic-search-bar"><span>⌕</span><input value={semanticQuery} onChange={(event) => setSemanticQuery(event.target.value)} placeholder="混合搜索标题、正文与语义相近内容…" /><small>{searching ? "搜索中…" : "离线语义 + FTS5"}</small></div>
     {semanticResults.length > 0 ? <div className="semantic-results">{semanticResults.slice(0, 6).map((result) => <button key={`${result.kind}-${result.id}`} onClick={() => result.kind === "pdf" && onSelect(result.id)}><span className={`result-type ${result.kind}`}>{result.kind === "pdf" ? "PDF" : "文"}</span><span><strong>{result.title}</strong><small>{result.snippet || "暂无摘要"}</small></span><em>{Math.round((result.score ?? 0) * 100)}%</em></button>)}</div> : null}
     <div className="documents-layout">
-      <section className="documents-list-panel list-panel"><div className="list-panel-heading"><span>{documents.length} 份文档</span><span className="muted">{space === "all" ? "全部空间" : space === "personal" ? "个人空间" : "工作空间"}</span></div>{documents.length === 0 ? <div className="compact-empty"><span>PDF</span><p>还没有 PDF 文档</p><button className="text-button" onClick={() => void importPdf()}>导入第一份 →</button></div> : <div className="documents-list">{documents.map((document) => <button className={`document-list-item ${document.id === selectedId ? "is-selected" : ""}`} key={document.id} onClick={() => onSelect(document.id)}><span className="document-icon">PDF</span><span><strong>{document.title}</strong><small>{document.pageCount || "?"} 页 · {formatRelative(document.updatedAt)}</small></span><em className={`ocr-status ${document.ocrStatus}`}>{document.ocrStatus === "completed" ? "已 OCR" : document.ocrStatus === "failed" ? "失败" : "未 OCR"}</em></button>)}</div>}</section>
-      <section className="document-detail-panel list-panel">{selected ? <><div className="document-detail-heading"><div><span className="eyebrow">{selected.space === "personal" ? "个人" : "工作"} · {formatDate(selected.updatedAt, true)}</span><h2>{selected.title}</h2><p>{selected.fileName} · {formatBytes(selected.size)} · SHA-256 {selected.sha256.slice(0, 12)}…</p></div><div className="document-actions"><button className="small-button subtle" onClick={() => void onOcr(selected)} disabled={selected.ocrStatus === "pending"}>本地 OCR</button><button className="small-button subtle" onClick={() => void exportPdf()}>导出</button><button className="small-button subtle danger" onClick={() => { if (window.confirm(`删除“${selected.title}”？`)) void onDelete(selected); }}>删除</button></div></div><div className="pdf-preview">{previewLoading ? <div className="compact-empty"><span>…</span><p>加载预览…</p></div> : pdfData ? <object data={`data:application/pdf;base64,${pdfData}`} type="application/pdf" aria-label={`${selected.title} PDF 预览`}><p>当前环境不支持内嵌预览，请点击导出。</p></object> : <div className="compact-empty"><span>PDF</span><p>预览不可用</p></div>}</div><div className="document-text"><div className="section-kicker">文本索引</div><pre>{textPreview}</pre></div><AiPanel content={selected.extractedText} context={`文档标题：${selected.title}`} compact /></> : <div className="editor-placeholder"><div className="placeholder-glyph">PDF</div><h3>选择一份 PDF</h3><p>导入后可预览原文件、查看文本抽取结果并执行本地 OCR。</p><button className="button secondary" onClick={() => void importPdf()}>导入 PDF</button></div>}</section>
+      <section className="documents-list-panel list-panel"><div className="list-panel-heading"><span>{documents.length} 份文档</span><span className="muted">{space === "all" ? "全部空间" : space === "personal" ? "个人空间" : "工作空间"}</span></div>{documents.length === 0 ? <EmptyState size="compact"><span>PDF</span><p>还没有 PDF 文档</p><Button variant="subtle" onClick={() => void importPdf()}>导入第一份 →</Button></EmptyState> : <div className="documents-list">{documents.map((document) => <SelectableListItem className="document-list-item" selected={document.id === selectedId} key={document.id} onClick={() => onSelect(document.id)}><span className="document-icon">PDF</span><span><strong>{document.title}</strong><small>{document.pageCount || "?"} 页 · {formatRelative(document.updatedAt)}</small></span><em className={`ocr-status ${document.ocrStatus}`}>{document.ocrStatus === "completed" ? "已 OCR" : document.ocrStatus === "failed" ? "失败" : "未 OCR"}</em></SelectableListItem>)}</div>}</section>
+      <section className="document-detail-panel list-panel">{selected ? <><div className="document-detail-heading"><div><span className="eyebrow">{selected.space === "personal" ? "个人" : "工作"} · {formatDate(selected.updatedAt, true)}</span><h2>{selected.title}</h2><p>{selected.fileName} · {formatBytes(selected.size)} · SHA-256 {selected.sha256.slice(0, 12)}…</p></div><div className="document-actions"><SpaceMoveButton space={selected.space} onMove={(nextSpace) => onMoveSpace(selected, nextSpace)} /><Button size="small" variant="subtle" onClick={() => void onOcr(selected)} disabled={selected.ocrStatus === "pending"}>本地 OCR</Button><Button size="small" variant="subtle" onClick={() => void exportPdf()}>导出</Button><Button size="small" variant="danger" onClick={async () => { if (await confirm({ title: "删除 PDF 文档", message: `删除“${selected.title}”？`, confirmLabel: "删除文档", tone: "danger" })) void onDelete(selected); }}>删除</Button></div></div><div className="pdf-preview">{previewLoading ? <LoadingState label="加载预览…" /> : pdfData ? <object data={`data:application/pdf;base64,${pdfData}`} type="application/pdf" aria-label={`${selected.title} PDF 预览`}><p>当前环境不支持内嵌预览，请点击导出。</p></object> : <EmptyState size="compact"><span>PDF</span><p>预览不可用</p></EmptyState>}</div><div className="document-text"><div className="section-kicker">文本索引</div><pre>{textPreview}</pre></div><AiPanel content={selected.extractedText} context={`文档标题：${selected.title}`} compact /></> : <EmptyState size="placeholder" className="editor-placeholder"><div className="placeholder-glyph">PDF</div><h3>选择一份 PDF</h3><p>导入后可预览原文件、查看文本抽取结果并执行本地 OCR。</p><Button variant="secondary" onClick={() => void importPdf()}>导入 PDF</Button></EmptyState>}</section>
     </div>
   </div>;
 }

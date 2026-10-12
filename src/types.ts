@@ -1,6 +1,6 @@
 export type Space = "all" | "personal" | "work";
 export type ContentSpace = Exclude<Space, "all">;
-export type PageId = "overview" | "inbox" | "sparks" | "today" | "tasks" | "notes" | "projects" | "schedule" | "checklists" | "templates" | "knowledge" | "documents" | "plugins" | "trash" | "settings";
+export type PageId = "overview" | "inbox" | "sparks" | "today" | "tasks" | "notes" | "projects" | "schedule" | "checklists" | "templates" | "knowledge" | "documents" | "plugins" | "archive" | "trash" | "settings";
 export type TaskStatus = "todo" | "in_progress" | "waiting" | "done" | "cancelled";
 export type TaskPriority = "urgent" | "high" | "normal" | "low";
 export type SparkStage = "new" | "developing" | "converted";

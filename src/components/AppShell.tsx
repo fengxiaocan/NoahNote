@@ -2,6 +2,7 @@ import type { ReactNode, RefObject } from "react";
 import type { PageId, SearchResult, Space } from "../types";
 import type { Theme } from "../lib/theme";
 import { formatRelative } from "../lib/format";
+import { IconButton, SegmentButton, SegmentedControl } from "./ui";
 
 const navItems: Array<{ id: PageId; label: string; icon: string }> = [
   { id: "overview", label: "总览", icon: "⌂" },
@@ -17,6 +18,7 @@ const navItems: Array<{ id: PageId; label: string; icon: string }> = [
   { id: "knowledge", label: "知识库", icon: "⌘" },
   { id: "documents", label: "PDF 文档", icon: "▥" },
   { id: "plugins", label: "插件", icon: "◇" },
+  { id: "archive", label: "归档空间", icon: "▱" },
   { id: "trash", label: "回收站", icon: "♧" },
 ];
 
@@ -84,10 +86,12 @@ export function AppShell({
             <button
               className={`nav-item ${activePage === item.id ? "is-active" : ""}`}
               key={item.id}
+              title={item.label}
+              aria-label={item.label}
               onClick={() => onNavigate(item.id)}
             >
               <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-              <span>{item.label}</span>
+              <span className="nav-label">{item.label}</span>
               {item.id === "inbox" && inboxCount > 0 ? (
                 <span className="nav-count">{inboxCount}</span>
               ) : null}
@@ -102,18 +106,20 @@ export function AppShell({
             <button
               className={`space-nav-item ${space === item ? "is-active" : ""}`}
               key={item}
+              title={`${spaceLabels[item]}空间`}
+              aria-label={`${spaceLabels[item]}空间`}
               onClick={() => onSpaceChange(item)}
             >
               <span className={`space-dot ${item}`} />
-              <span>{spaceLabels[item]}</span>
+              <span className="nav-label">{spaceLabels[item]}</span>
             </button>
           ))}
         </div>
 
         <div className="sidebar-bottom">
-          <button className={`nav-item ${activePage === "settings" ? "is-active" : ""}`} onClick={() => onNavigate("settings")}>
+          <button className={`nav-item ${activePage === "settings" ? "is-active" : ""}`} title="设置与同步" aria-label="设置与同步" onClick={() => onNavigate("settings")}>
             <span className="nav-icon" aria-hidden="true">⚙</span>
-            <span>设置与同步</span>
+            <span className="nav-label">设置与同步</span>
           </button>
           <div className="local-first-badge">
             <span className="status-dot" />
@@ -156,25 +162,25 @@ export function AppShell({
           </div>
 
           <div className="topbar-actions">
-            <div className="top-space-switcher" aria-label="空间切换">
+            <SegmentedControl className="top-space-switcher" label="空间切换" variant="surface">
               {(["all", "personal", "work"] as const).map((item) => (
-                <button className={space === item ? "is-active" : ""} key={item} onClick={() => onSpaceChange(item)}>
+                <SegmentButton selected={space === item} key={item} onClick={() => onSpaceChange(item)}>
                   {spaceLabels[item]}
-                </button>
+                </SegmentButton>
               ))}
-            </div>
-            <button className="quick-capture-button" onClick={onQuickCapture}>
-              <span>＋</span> 快速记录 <kbd>Ctrl ⇧ Space</kbd>
+            </SegmentedControl>
+            <button className="quick-capture-button" title="快速记录" aria-label="快速记录" onClick={onQuickCapture}>
+              <span>＋</span><span className="quick-capture-label">快速记录</span><kbd>Ctrl ⇧ Space</kbd>
             </button>
-            <button className="icon-button theme-toggle" title={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"} aria-label={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"} aria-pressed={theme === "dark"} onClick={onThemeToggle}>
+            <IconButton className="theme-toggle" title={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"} label={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"} aria-pressed={theme === "dark"} onClick={onThemeToggle}>
               <span aria-hidden="true">{theme === "dark" ? "☼" : "◐"}</span>
-            </button>
-            <button className="icon-button" title="最小化到托盘" aria-label="最小化到托盘" onClick={onMinimizeToTray}>
+            </IconButton>
+            <IconButton label="最小化到托盘" onClick={onMinimizeToTray}>
               <span>⌄</span>
-            </button>
-            <button className="icon-button" title="刷新数据" onClick={onRefresh} disabled={loading}>
-              <span className={loading ? "spin" : ""}>↻</span>
-            </button>
+            </IconButton>
+            <IconButton label="刷新数据" onClick={onRefresh} disabled={loading} aria-busy={loading}>
+              <span className={loading ? "spin" : ""} aria-hidden="true">↻</span>
+            </IconButton>
           </div>
         </header>
         <main className="content-area">{children}</main>

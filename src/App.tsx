@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "./components/AppShell";
+import { useAppDialogs } from "./components/AppDialogs";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
 import { CreateModal, type CreateKind, type FormValues } from "./components/Modal";
 import { api, isTauri } from "./lib/api";
 import { normalizeTheme, themeStorageKey, toggleTheme, type Theme } from "./lib/theme";
 import { DocumentsPage } from "./pages/DocumentsPage";
+import { ArchivePage, type ArchiveEntry } from "./pages/ArchivePage";
 import { InboxPage } from "./pages/InboxPage";
 import { ChecklistsPage } from "./pages/ChecklistsPage";
 import { KnowledgeBasePage } from "./pages/KnowledgeBasePage";
@@ -23,7 +25,7 @@ import { TodayPage } from "./pages/TodayPage";
 import { TrashPage } from "./pages/TrashPage";
 import type { KnowledgeFolderInput, KnowledgePageInput, ScheduleEventInput } from "./lib/api";
 import { importedNoteTitle, parseTaskImport } from "./lib/import";
-import type { AppSettings, BackupInfo, Checklist, ChecklistItem, InboxItem, KnowledgeNode, KnowledgePage, Note, PageId, PdfDocument, PluginManifest, Project, ScheduleEvent, SearchResult, Space, SparkStage, SyncAction, SyncHistoryEntry, Task, Template, TemplateKind, TrashItem } from "./types";
+import type { AppSettings, BackupInfo, Checklist, ChecklistItem, ContentSpace, InboxItem, KnowledgeNode, KnowledgePage, Note, PageId, PdfDocument, PluginManifest, Project, ScheduleEvent, SearchResult, Space, SparkStage, SyncAction, SyncHistoryEntry, Task, Template, TemplateKind, TrashItem } from "./types";
 
 const defaultSettings: AppSettings = {
   workspaceRoot: "本地 Workspace",
@@ -76,6 +78,7 @@ const defaultSettings: AppSettings = {
 };
 
 export default function App() {
+  const { confirm } = useAppDialogs();
   const [activePage, setActivePage] = useState<PageId>("overview");
   const [space, setSpace] = useState<Space>("all");
   const [notes, setNotes] = useState<Note[]>([]);
@@ -140,15 +143,16 @@ export default function App() {
     if (!isTauri()) return;
     setLoading(true);
     try {
+      const includeArchived = activePage === "archive";
       const [nextNotes, nextTasks, nextProjects, nextInbox, nextEvents, nextChecklists, nextTemplates, nextKnowledgeNodes, nextTrash, nextDocuments, nextPlugins, nextSyncHistory] = await Promise.all([
-        api.listNotes(space),
-        api.listTasks(space),
-        api.listProjects(space),
-        api.listInbox(space),
-        api.listEvents(space),
-        api.listChecklists(space),
-        api.listTemplates(space),
-        api.listKnowledgeNodes(space),
+        api.listNotes(space, includeArchived),
+        api.listTasks(space, includeArchived),
+        api.listProjects(space, includeArchived),
+        api.listInbox(space, includeArchived),
+        api.listEvents(space, undefined, undefined, includeArchived),
+        api.listChecklists(space, includeArchived),
+        api.listTemplates(space, includeArchived),
+        api.listKnowledgeNodes(space, includeArchived),
         api.listTrash(space),
         api.listDocuments(space),
         api.listPlugins(),
@@ -314,26 +318,29 @@ export default function App() {
   }, [run]);
 
   const updateNote = useCallback((note: Note) => run(() => api.updateNote(note)), [run]);
+  const moveNoteToSpace = useCallback((note: Note, nextSpace: ContentSpace) => run(() => api.updateNote({ ...note, space: nextSpace }), true), [run]);
   const toggleFavoriteNote = useCallback((note: Note) => updateNote({ ...note, favorite: !note.favorite }), [updateNote]);
   const archiveNote = useCallback((note: Note) => run(() => api.archiveNote(note.id, !note.archived)), [run]);
   const deleteNote = useCallback(async (note: Note) => {
-    if (!window.confirm("删除笔记“" + note.title + "”？它会进入回收站。")) return;
+    if (!await confirm({ title: "删除笔记", message: `删除“${note.title}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteNote(note.id), true);
     setSelectedNoteId(null);
-  }, [run]);
+  }, [confirm, run]);
   const updateTask = useCallback((task: Task) => run(() => api.updateTask(task)), [run]);
+  const moveTaskToSpace = useCallback((task: Task, nextSpace: ContentSpace) => run(() => api.updateTask({ ...task, space: nextSpace }), true), [run]);
   const archiveTask = useCallback((task: Task) => run(() => api.archiveTask(task.id, true), true), [run]);
   const deleteTask = useCallback(async (task: Task) => {
-    if (!window.confirm("删除任务“" + task.title + "”？它会进入回收站。")) return;
+    if (!await confirm({ title: "删除任务", message: `删除“${task.title}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteTask(task.id), true);
-  }, [run]);
+  }, [confirm, run]);
   const updateProject = useCallback((project: Project) => run(() => api.updateProject(project)), [run]);
+  const moveProjectToSpace = useCallback((project: Project, nextSpace: ContentSpace) => run(() => api.updateProject({ ...project, space: nextSpace }), true), [run]);
   const archiveProject = useCallback((project: Project) => run(() => api.archiveProject(project.id, true), true), [run]);
   const deleteProject = useCallback(async (project: Project) => {
-    if (!window.confirm("删除项目“" + project.name + "”？它会进入回收站。")) return;
+    if (!await confirm({ title: "删除项目", message: `删除“${project.name}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteProject(project.id), true);
     setSelectedProjectId(null);
-  }, [run]);
+  }, [confirm, run]);
   const saveEvent = useCallback(async (draft: ScheduleEventInput, existing?: ScheduleEvent) => {
     if (existing) {
       await run(() => api.updateEvent({ ...existing, ...draft, startTime: draft.startTime ?? null, endTime: draft.endTime ?? null, taskId: draft.taskId ?? null, projectId: draft.projectId ?? null }), true);
@@ -341,24 +348,27 @@ export default function App() {
       await run(() => api.createEvent(draft), true);
     }
   }, [run]);
+  const moveEventToSpace = useCallback((event: ScheduleEvent, nextSpace: ContentSpace) => run(() => api.updateEvent({ ...event, space: nextSpace }), true), [run]);
   const archiveEvent = useCallback((event: ScheduleEvent) => run(() => api.archiveEvent(event.id, true)), [run]);
   const deleteEvent = useCallback(async (event: ScheduleEvent) => {
-    if (!window.confirm("删除日程“" + event.title + "”？它会进入回收站。")) return;
+    if (!await confirm({ title: "删除日程", message: `删除“${event.title}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteEvent(event.id), true);
-  }, [run]);
+  }, [confirm, run]);
   const clearSelectedEvent = useCallback(() => setSelectedEventId(null), []);
   const updateChecklist = useCallback((checklist: Checklist) => run(() => api.updateChecklist(checklist)), [run]);
+  const moveChecklistToSpace = useCallback((checklist: Checklist, nextSpace: ContentSpace) => run(() => api.updateChecklist({ ...checklist, space: nextSpace }), true), [run]);
   const archiveChecklist = useCallback((checklist: Checklist) => run(() => api.archiveChecklist(checklist.id, true)), [run]);
   const deleteChecklist = useCallback(async (checklist: Checklist) => {
-    if (!window.confirm("删除清单“" + checklist.title + "”？它会进入回收站。")) return;
+    if (!await confirm({ title: "删除清单", message: `删除“${checklist.title}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteChecklist(checklist.id), true);
-  }, [run]);
+  }, [confirm, run]);
   const updateTemplate = useCallback((template: Template) => run(() => api.updateTemplate(template)), [run]);
+  const moveTemplateToSpace = useCallback((template: Template, nextSpace: ContentSpace) => run(() => api.updateTemplate({ ...template, space: nextSpace }), true), [run]);
   const archiveTemplate = useCallback((template: Template) => run(() => api.archiveTemplate(template.id, true)), [run]);
   const deleteTemplate = useCallback(async (template: Template) => {
-    if (!window.confirm("删除模板“" + template.name + "”？它会进入回收站。")) return;
+    if (!await confirm({ title: "删除模板", message: `删除“${template.name}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteTemplate(template.id), true);
-  }, [run]);
+  }, [confirm, run]);
   const useTemplate = useCallback(async (template: Template) => {
     const created = await run(() => api.createFromTemplate(template.id, createSpaceFor(settings, space)), true);
     if (created) setActivePage(template.kind === "note" ? "notes" : template.kind === "task" ? "tasks" : template.kind === "project" ? "projects" : "checklists");
@@ -366,9 +376,9 @@ export default function App() {
   const archiveInboxItem = useCallback((item: InboxItem) => run(() => api.archiveInboxItem(item.id, true)), [run]);
   const updateInboxItem = useCallback((item: InboxItem) => run(() => api.updateInboxItem(item), true), [run]);
   const deleteInboxItem = useCallback(async (item: InboxItem) => {
-    if (!window.confirm("删除收件箱内容“" + item.title + "”？它会进入回收站。")) return;
+    if (!await confirm({ title: "删除收件箱内容", message: `删除“${item.title}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteInboxItem(item.id), true);
-  }, [run]);
+  }, [confirm, run]);
   const moveInboxItem = useCallback((item: InboxItem, nextSpace: "personal" | "work") => run(() => api.moveInboxItem(item.id, nextSpace)), [run]);
   const updateSparkStage = useCallback((item: InboxItem, stage: SparkStage) => run(() => api.updateSparkStage(item.id, stage)), [run]);
   const promoteInboxItem = useCallback((item: InboxItem, target: "note" | "task") => run(() => api.promoteInboxItem(item.id, target)), [run]);
@@ -478,6 +488,25 @@ export default function App() {
       return api.updateKnowledgeFolder({ ...folder, parentId });
     }, true);
   }, [run]);
+  const moveKnowledgeFolderToSpace = useCallback(async (node: KnowledgeNode, nextSpace: ContentSpace) => {
+    const isSelectedPageInFolder = () => {
+      let current = knowledgeNodes.find((candidate) => candidate.id === selectedKnowledgePageId);
+      while (current) {
+        if (current.id === node.id) return true;
+        const parentId = current.parentId;
+        if (!parentId) break;
+        current = knowledgeNodes.find((candidate) => candidate.id === parentId);
+      }
+      return false;
+    };
+    const clearSelection = node.kind === "folder" && isSelectedPageInFolder();
+    const result = await run(() => api.moveKnowledgeFolderSpace(node.id, nextSpace), true);
+    if (clearSelection) {
+      setSelectedKnowledgePageId(null);
+      setSelectedKnowledgePage(null);
+    }
+    return result;
+  }, [knowledgeNodes, run, selectedKnowledgePageId]);
   const createKnowledgePage = useCallback(async (input: KnowledgePageInput) => {
     const created = await run(() => api.createKnowledgePage(input), true);
     if (isKnowledgePage(created)) {
@@ -489,6 +518,39 @@ export default function App() {
     const updated = await run(() => api.updateKnowledgePage(page), true);
     if (isKnowledgePage(updated)) setSelectedKnowledgePage(updated);
   }, [run]);
+  const moveKnowledgePageToSpace = useCallback(async (page: KnowledgePage, nextSpace: ContentSpace) => {
+    const updated = await run(() => api.updateKnowledgePage({ ...page, space: nextSpace, parentId: null }), true);
+    if (isKnowledgePage(updated)) setSelectedKnowledgePage(updated);
+  }, [run]);
+  const moveKnowledgeNodeToSpace = useCallback((node: KnowledgeNode, nextSpace: ContentSpace) => {
+    if (node.kind === "folder") return moveKnowledgeFolderToSpace(node, nextSpace);
+    return run(async () => {
+      const page = await api.getKnowledgePage(node.id);
+      const updated = await api.updateKnowledgePage({ ...page, space: nextSpace, parentId: null });
+      if (isKnowledgePage(updated)) setSelectedKnowledgePage(updated);
+      return updated;
+    }, true);
+  }, [moveKnowledgeFolderToSpace, run]);
+  const restoreKnowledgeNode = useCallback((node: KnowledgeNode) => run(async () => {
+    const ancestors: KnowledgeNode[] = [];
+    let parentId = node.parentId;
+    while (parentId) {
+      const parent = knowledgeNodes.find((candidate) => candidate.id === parentId && candidate.kind === "folder");
+      if (!parent) break;
+      if (parent.archived) ancestors.push(parent);
+      parentId = parent.parentId;
+    }
+    for (const ancestor of ancestors.reverse()) {
+      const folder = await api.getKnowledgeFolder(ancestor.id);
+      if (folder.archived) await api.updateKnowledgeFolder({ ...folder, archived: false });
+    }
+    if (node.kind === "folder") {
+      const folder = await api.getKnowledgeFolder(node.id);
+      return api.updateKnowledgeFolder({ ...folder, archived: false });
+    }
+    const page = await api.getKnowledgePage(node.id);
+    return api.updateKnowledgePage({ ...page, archived: false });
+  }, true), [knowledgeNodes, run]);
   const deleteKnowledgePage = useCallback(async (page: KnowledgePage) => {
     await run(() => api.deleteKnowledgePage(page.id), true);
     setSelectedKnowledgePageId(null);
@@ -503,6 +565,7 @@ export default function App() {
     const created = await run(() => api.importPdf(sourcePath, targetSpace), true);
     if (created && isPdfDocument(created)) setSelectedDocumentId(created.id);
   }, [run]);
+  const moveDocumentToSpace = useCallback((document: PdfDocument, nextSpace: ContentSpace) => run(() => api.moveDocumentSpace(document.id, nextSpace), true), [run]);
   const ocrPdf = useCallback(async (document: PdfDocument) => {
     const updated = await run(() => api.ocrPdf(document.id), true);
     if (updated && isPdfDocument(updated)) setSelectedDocumentId(updated.id);
@@ -560,9 +623,9 @@ export default function App() {
   }, [run]);
 
   const restoreBackup = useCallback(async (name: string) => {
-    if (!window.confirm(`恢复 ${name} 前会自动创建当前数据的安全备份，确定继续吗？`)) return;
+    if (!await confirm({ title: "恢复备份", message: `恢复 ${name} 前会自动创建当前数据的安全备份。要继续吗？`, confirmLabel: "恢复备份" })) return;
     await run(() => api.restoreBackup(name));
-  }, [run]);
+  }, [confirm, run]);
 
   const sync = useCallback(async (action: SyncAction) => {
     if (!isTauri()) {
@@ -625,6 +688,16 @@ export default function App() {
   const sparkItems = inbox.filter((item) => item.kind === "spark");
 
   const selectedKnowledgePageForSpace = selectedKnowledgePage && (space === "all" || selectedKnowledgePage.space === space) ? selectedKnowledgePage : null;
+  const archiveEntries = useMemo<ArchiveEntry[]>(() => [
+    ...notes.filter((item) => item.archived).map((item) => ({ id: item.id, kind: "笔记", title: item.title || "无标题笔记", detail: "", space: item.space, updatedAt: item.updatedAt, onRestore: () => run(() => api.archiveNote(item.id, false), true), onMove: (nextSpace: ContentSpace) => moveNoteToSpace(item, nextSpace) })),
+    ...tasks.filter((item) => item.archived).map((item) => ({ id: item.id, kind: "任务", title: item.title, detail: item.description, space: item.space, updatedAt: item.updatedAt, onRestore: () => run(() => api.archiveTask(item.id, false), true), onMove: (nextSpace: ContentSpace) => moveTaskToSpace(item, nextSpace) })),
+    ...projects.filter((item) => item.archived).map((item) => ({ id: item.id, kind: "项目", title: item.name, detail: item.description, space: item.space, updatedAt: item.updatedAt, onRestore: () => run(() => api.archiveProject(item.id, false), true), onMove: (nextSpace: ContentSpace) => moveProjectToSpace(item, nextSpace) })),
+    ...checklists.filter((item) => item.archived).map((item) => ({ id: item.id, kind: "清单", title: item.title, detail: item.items.length + " 项内容", space: item.space, updatedAt: item.updatedAt, onRestore: () => run(() => api.archiveChecklist(item.id, false), true), onMove: (nextSpace: ContentSpace) => moveChecklistToSpace(item, nextSpace) })),
+    ...events.filter((item) => item.archived).map((item) => ({ id: item.id, kind: "日程", title: item.title, detail: item.date, space: item.space, updatedAt: item.updatedAt, onRestore: () => run(() => api.archiveEvent(item.id, false), true), onMove: (nextSpace: ContentSpace) => moveEventToSpace(item, nextSpace) })),
+    ...inbox.filter((item) => item.archived).map((item) => ({ id: item.id, kind: item.kind === "spark" ? "思维灵光" : "收件箱", title: item.title, detail: item.body, space: item.space, updatedAt: item.updatedAt, onRestore: () => run(() => api.archiveInboxItem(item.id, false), true), onMove: (nextSpace: ContentSpace) => moveInboxItem(item, nextSpace) })),
+    ...templates.filter((item) => item.archived).map((item) => ({ id: item.id, kind: "模板", title: item.name, detail: item.description, space: item.space, updatedAt: item.updatedAt, onRestore: () => run(() => api.archiveTemplate(item.id, false), true), onMove: (nextSpace: ContentSpace) => moveTemplateToSpace(item, nextSpace) })),
+    ...knowledgeNodes.filter((item) => item.archived).map((item) => ({ id: item.id, kind: item.kind === "folder" ? "知识目录" : "知识页面", title: item.title, detail: "", space: item.space, updatedAt: item.updatedAt, onRestore: () => restoreKnowledgeNode(item), onMove: (nextSpace: ContentSpace) => moveKnowledgeNodeToSpace(item, nextSpace) })),
+  ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)), [checklists, events, inbox, knowledgeNodes, moveChecklistToSpace, moveEventToSpace, moveInboxItem, moveKnowledgeNodeToSpace, moveNoteToSpace, moveProjectToSpace, moveTaskToSpace, moveTemplateToSpace, notes, projects, restoreKnowledgeNode, run, tasks, templates]);
 
   const page = useMemo(() => {
     const create = (kind: CreateKind) => setModal(kind);
@@ -632,23 +705,24 @@ export default function App() {
       case "inbox": return <InboxPage space={space} items={inboxItems} selectedId={selectedInboxId} onSelect={setSelectedInboxId} onCreate={create} onUpdate={updateInboxItem} onArchive={archiveInboxItem} onDelete={deleteInboxItem} onMove={moveInboxItem} onPromote={promoteInboxItem} />;
       case "sparks": return <SparksPage space={space} items={sparkItems} selectedId={selectedInboxId} onCreate={create} onStageChange={updateSparkStage} onArchive={archiveInboxItem} onDelete={deleteInboxItem} onMove={moveInboxItem} onPromote={promoteInboxItem} />;
       case "today": return <TodayPage space={space} tasks={tasks} notes={notes} events={events} inbox={inbox} onCreate={create} onToggleTask={(task) => updateTask({ ...task, status: task.status === "done" ? "todo" : "done" })} />;
-      case "tasks": return <TasksPage space={space} tasks={tasks} projects={projects} selectedId={selectedTaskId} onSelect={setSelectedTaskId} onCreate={create} onUpdate={updateTask} onArchive={archiveTask} onDelete={deleteTask} onImport={importTasks} />;
+      case "tasks": return <TasksPage space={space} tasks={tasks} projects={projects} selectedId={selectedTaskId} onSelect={setSelectedTaskId} onCreate={create} onUpdate={updateTask} onArchive={archiveTask} onMoveSpace={moveTaskToSpace} onDelete={deleteTask} onImport={importTasks} />;
       case "schedule": return <SchedulePage space={space} createSpace={createSpaceFor(settings, space)} events={events} tasks={tasks} projects={projects} createRequest={scheduleCreateRequest} selectedId={selectedEventId} onSelectionHandled={clearSelectedEvent} onSave={saveEvent} onArchive={archiveEvent} onDelete={deleteEvent} />;
-      case "notes": return <NotesPage space={space} notes={notes} projects={projects} selectedId={selectedNoteId} onSelect={setSelectedNoteId} onCreate={create} onUpdate={updateNote} onToggleFavorite={toggleFavoriteNote} onArchive={archiveNote} onDelete={deleteNote} onAttach={attachToNote} onImport={importNote} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} />;
-      case "projects": return <ProjectsPage space={space} projects={projects} tasks={tasks} notes={notes} selectedId={selectedProjectId} onSelect={setSelectedProjectId} onCreate={create} onUpdate={updateProject} onArchive={archiveProject} onDelete={deleteProject} />;
-      case "checklists": return <ChecklistsPage space={space} checklists={checklists} selectedId={selectedChecklistId} onSelect={setSelectedChecklistId} onCreate={create} onUpdate={updateChecklist} onArchive={archiveChecklist} onDelete={deleteChecklist} />;
-      case "templates": return <TemplatesPage space={space} templates={templates} onCreate={create} onUpdate={updateTemplate} onArchive={archiveTemplate} onDelete={deleteTemplate} onUse={useTemplate} />;
-      case "knowledge": return <KnowledgeBasePage space={space} createSpace={createSpaceFor(settings, space)} nodes={knowledgeNodes} notes={notes} selectedPage={selectedKnowledgePageForSpace} onSelectPage={(id) => { setSelectedKnowledgePageId(id); setSelectedKnowledgePage(null); }} onCreateFolder={createKnowledgeFolder} onCreatePage={createKnowledgePage} onUpdatePage={updateKnowledgePage} onRenameFolder={updateKnowledgeFolder} onMoveFolder={moveKnowledgeFolder} onDeletePage={deleteKnowledgePage} onDeleteFolder={deleteKnowledgeFolder} onImportNote={importNoteToKnowledge} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} />;
-      case "documents": return <DocumentsPage space={space} documents={documents} selectedId={selectedDocumentId} onSelect={setSelectedDocumentId} onImport={importPdf} onExport={exportPdf} onOcr={ocrPdf} onDelete={deleteDocument} />;
+      case "notes": return <NotesPage space={space} notes={notes} projects={projects} selectedId={selectedNoteId} onSelect={setSelectedNoteId} onCreate={create} onUpdate={updateNote} onMoveSpace={moveNoteToSpace} onToggleFavorite={toggleFavoriteNote} onArchive={archiveNote} onDelete={deleteNote} onAttach={attachToNote} onImport={importNote} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} />;
+      case "projects": return <ProjectsPage space={space} projects={projects} tasks={tasks} notes={notes} selectedId={selectedProjectId} onSelect={setSelectedProjectId} onCreate={create} onUpdate={updateProject} onArchive={archiveProject} onMoveSpace={moveProjectToSpace} onDelete={deleteProject} />;
+      case "checklists": return <ChecklistsPage space={space} checklists={checklists} selectedId={selectedChecklistId} onSelect={setSelectedChecklistId} onCreate={create} onUpdate={updateChecklist} onArchive={archiveChecklist} onMoveSpace={moveChecklistToSpace} onDelete={deleteChecklist} />;
+      case "templates": return <TemplatesPage space={space} templates={templates} onCreate={create} onUpdate={updateTemplate} onArchive={archiveTemplate} onMoveSpace={moveTemplateToSpace} onDelete={deleteTemplate} onUse={useTemplate} />;
+      case "knowledge": return <KnowledgeBasePage space={space} createSpace={createSpaceFor(settings, space)} nodes={knowledgeNodes} notes={notes} selectedPage={selectedKnowledgePageForSpace} onSelectPage={(id) => { setSelectedKnowledgePageId(id); setSelectedKnowledgePage(null); }} onCreateFolder={createKnowledgeFolder} onCreatePage={createKnowledgePage} onUpdatePage={updateKnowledgePage} onMovePageSpace={moveKnowledgePageToSpace} onRenameFolder={updateKnowledgeFolder} onMoveFolder={moveKnowledgeFolder} onMoveFolderSpace={moveKnowledgeFolderToSpace} onDeletePage={deleteKnowledgePage} onDeleteFolder={deleteKnowledgeFolder} onImportNote={importNoteToKnowledge} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} />;
+      case "documents": return <DocumentsPage space={space} documents={documents} selectedId={selectedDocumentId} onSelect={setSelectedDocumentId} onImport={importPdf} onExport={exportPdf} onOcr={ocrPdf} onDelete={deleteDocument} onMoveSpace={moveDocumentToSpace} />;
       case "plugins": return <PluginsPage plugins={plugins} onInstall={installPlugin} onToggle={togglePlugin} />;
+      case "archive": return <ArchivePage space={space} entries={archiveEntries} />;
       case "trash": return <TrashPage space={space} retentionDays={settings.trashRetentionDays} items={trashItems} onRestore={restoreTrash} onDelete={permanentlyDeleteTrash} onPurge={purgeTrash} />;
       case "settings": return <SettingsPage settings={settings} backups={backups} syncHistory={syncHistory} onSave={saveSettings} onBackup={createBackup} onRestore={restoreBackup} onSync={sync} theme={theme} onThemeChange={changeTheme} />;
       default: return <OverviewPage space={space} notes={notes} tasks={tasks} projects={projects} inbox={inboxItems} events={events} checklists={checklists} onCreate={create} onNavigate={setActivePage} onToggleTask={updateTask} />;
     }
-  }, [activePage, archiveChecklist, archiveEvent, archiveInboxItem, archiveNote, archiveProject, archiveTask, archiveTemplate, attachToNote, backups, changeTheme, checklists, clearSelectedEvent, createBackup, createKnowledgeFolder, createKnowledgePage, deleteChecklist, deleteDocument, deleteEvent, deleteInboxItem, deleteKnowledgeFolder, deleteKnowledgePage, deleteNote, deleteProject, deleteTask, deleteTemplate, documents, events, exportPdf, importNote, importNoteToKnowledge, importPdf, importTasks, inbox, installPlugin, knowledgeNodes, moveInboxItem, moveKnowledgeFolder, notes, ocrPdf, permanentlyDeleteTrash, plugins, projects, promoteInboxItem, purgeTrash, restoreBackup, restoreTrash, restoreVersion, saveEvent, saveSettings, scheduleCreateRequest, selectedChecklistId, selectedDocumentId, selectedEventId, selectedInboxId, selectedKnowledgePageForSpace, selectedNoteId, selectedProjectId, selectedTaskId, settings, space, sync, syncHistory, tasks, templates, theme, toggleFavoriteNote, togglePlugin, trashItems, updateChecklist, updateInboxItem, updateKnowledgePage, updateNote, updateProject, updateSparkStage, updateTask, updateTemplate, useTemplate]);
+  }, [activePage, archiveChecklist, archiveEntries, archiveEvent, archiveInboxItem, archiveNote, archiveProject, archiveTask, archiveTemplate, attachToNote, backups, changeTheme, checklists, clearSelectedEvent, createBackup, createKnowledgeFolder, createKnowledgePage, deleteChecklist, deleteDocument, deleteEvent, deleteInboxItem, deleteKnowledgeFolder, deleteKnowledgePage, deleteNote, deleteProject, deleteTask, deleteTemplate, documents, events, exportPdf, importNote, importNoteToKnowledge, importPdf, importTasks, inbox, installPlugin, knowledgeNodes, moveDocumentToSpace, moveInboxItem, moveKnowledgeFolder, moveKnowledgeFolderToSpace, moveKnowledgePageToSpace, moveNoteToSpace, moveProjectToSpace, moveTaskToSpace, moveTemplateToSpace, moveChecklistToSpace, moveEventToSpace, moveKnowledgeNodeToSpace, ocrPdf, permanentlyDeleteTrash, plugins, projects, promoteInboxItem, purgeTrash, restoreBackup, restoreKnowledgeNode, restoreTrash, restoreVersion, saveEvent, saveSettings, scheduleCreateRequest, selectedChecklistId, selectedDocumentId, selectedEventId, selectedInboxId, selectedKnowledgePageForSpace, selectedNoteId, selectedProjectId, selectedTaskId, settings, space, sync, syncHistory, tasks, templates, theme, toggleFavoriteNote, togglePlugin, trashItems, updateChecklist, updateInboxItem, updateKnowledgePage, updateNote, updateProject, updateSparkStage, updateTask, updateTemplate, useTemplate]);
 
   const createSpace = space === "all" ? settings.defaultSpace : space;
-  return <AppShell activePage={activePage} space={space} searchQuery={searchQuery} searchResults={searchResults} searchInputRef={searchRef} loading={loading} inboxCount={inboxItems.length} onNavigate={setActivePage} onSpaceChange={setSpace} onSearchChange={setSearchQuery} onSearchFocus={() => undefined} onOpenSearchResult={openSearchResult} onQuickCapture={() => setModal("inbox")} theme={theme} onThemeToggle={toggleAppTheme} onMinimizeToTray={() => void minimizeToTray()} onRefresh={() => void reload()}>{!isTauri() ? <div className="dev-banner"><span>预览模式</span> 当前页面使用空数据；运行 <code>npm run tauri dev</code> 连接本地 Workspace。</div> : null}{error ? <div className="error-banner"><span>!</span><span>{error}</span><button onClick={() => setError("")} aria-label="关闭提示">×</button></div> : null}{page}{modal ? <CreateModal kind={modal} space={createSpace} projects={projects} onClose={() => setModal(null)} onSave={(values) => handleCreate(modal, values)} /> : null}{paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} onSelect={selectPaletteCommand} /> : null}</AppShell>;
+  return <AppShell activePage={activePage} space={space} searchQuery={searchQuery} searchResults={searchResults} searchInputRef={searchRef} loading={loading} inboxCount={inboxItems.filter((item) => !item.archived).length} onNavigate={setActivePage} onSpaceChange={setSpace} onSearchChange={setSearchQuery} onSearchFocus={() => undefined} onOpenSearchResult={openSearchResult} onQuickCapture={() => setModal("inbox")} theme={theme} onThemeToggle={toggleAppTheme} onMinimizeToTray={() => void minimizeToTray()} onRefresh={() => void reload()}>{!isTauri() ? <div className="dev-banner"><span>预览模式</span> 当前页面使用空数据；运行 <code>npm run tauri dev</code> 连接本地 Workspace。</div> : null}{error ? <div className="error-banner" role="alert"><span>!</span><span>{error}</span><button onClick={() => setError("")} aria-label="关闭提示">×</button></div> : null}{page}{modal ? <CreateModal kind={modal} space={createSpace} projects={projects} onClose={() => setModal(null)} onSave={(values) => handleCreate(modal, values)} /> : null}{paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} onSelect={selectPaletteCommand} /> : null}</AppShell>;
 }
 
 function errorMessage(cause: unknown) {

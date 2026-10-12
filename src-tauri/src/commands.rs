@@ -340,6 +340,15 @@ pub fn update_knowledge_folder(
 }
 
 #[tauri::command]
+pub fn move_knowledge_folder_space(
+    state: State<'_, AppState>,
+    id: String,
+    space: Space,
+) -> AppResult<KnowledgeFolder> {
+    repository(&state)?.move_knowledge_folder_space(&id, space)
+}
+
+#[tauri::command]
 pub fn create_knowledge_page(
     state: State<'_, AppState>,
     input: KnowledgePageInput,
@@ -480,6 +489,15 @@ pub fn list_documents(state: State<'_, AppState>, space: Space) -> AppResult<Vec
 #[tauri::command]
 pub fn get_document(state: State<'_, AppState>, id: String) -> AppResult<PdfDocument> {
     repository(&state)?.get_document(&id)
+}
+
+#[tauri::command]
+pub fn move_document_space(
+    state: State<'_, AppState>,
+    id: String,
+    space: Space,
+) -> AppResult<PdfDocument> {
+    repository(&state)?.move_document_space(&id, space)
 }
 
 #[tauri::command]

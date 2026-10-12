@@ -149,24 +149,24 @@ export const api = {
   updateSparkStage: (id: string, stage: SparkStage) =>
     call<InboxItem>("update_spark_stage", { id, stage }),
   deleteInboxItem: (id: string) => call<TrashItem>("delete_inbox_item", { id }),
-  listEvents: (space: Space, startDate?: string | null, endDate?: string | null) =>
-    call<ScheduleEvent[]>("list_events", { space, startDate, endDate, includeArchived: false }),
+  listEvents: (space: Space, startDate?: string | null, endDate?: string | null, includeArchived = false) =>
+    call<ScheduleEvent[]>("list_events", { space, startDate, endDate, includeArchived }),
   getEvent: (id: string) => call<ScheduleEvent>("get_event", { id }),
   createEvent: (input: ScheduleEventInput) => call<ScheduleEvent>("create_event", { input }),
   updateEvent: (event: ScheduleEvent) => call<ScheduleEvent>("update_event", { event }),
   archiveEvent: (id: string, archived: boolean) =>
     call<ScheduleEvent>("archive_event", { id, archived }),
   deleteEvent: (id: string) => call<TrashItem>("delete_event", { id }),
-  listChecklists: (space: Space) =>
-    call<Checklist[]>("list_checklists", { space, includeArchived: false }),
+  listChecklists: (space: Space, includeArchived = false) =>
+    call<Checklist[]>("list_checklists", { space, includeArchived }),
   getChecklist: (id: string) => call<Checklist>("get_checklist", { id }),
   createChecklist: (input: ChecklistInput) => call<Checklist>("create_checklist", { input }),
   updateChecklist: (checklist: Checklist) => call<Checklist>("update_checklist", { checklist }),
   archiveChecklist: (id: string, archived: boolean) =>
     call<Checklist>("archive_checklist", { id, archived }),
   deleteChecklist: (id: string) => call<TrashItem>("delete_checklist", { id }),
-  listTemplates: (space: Space) =>
-    call<Template[]>("list_templates", { space, includeArchived: false }),
+  listTemplates: (space: Space, includeArchived = false) =>
+    call<Template[]>("list_templates", { space, includeArchived }),
   getTemplate: (id: string) => call<Template>("get_template", { id }),
   createTemplate: (input: TemplateInput) => call<Template>("create_template", { input }),
   updateTemplate: (template: Template) => call<Template>("update_template", { template }),
@@ -175,8 +175,8 @@ export const api = {
   deleteTemplate: (id: string) => call<TrashItem>("delete_template", { id }),
   createFromTemplate: (id: string, space: Exclude<Space, "all">) =>
     call<unknown>("create_from_template", { id, space }),
-  listKnowledgeNodes: (space: Space) =>
-    call<KnowledgeNode[]>("list_knowledge_nodes", { space, includeArchived: false }),
+  listKnowledgeNodes: (space: Space, includeArchived = false) =>
+    call<KnowledgeNode[]>("list_knowledge_nodes", { space, includeArchived }),
   getKnowledgePage: (id: string) => call<KnowledgePage>("get_knowledge_page", { id }),
   getKnowledgeFolder: (id: string) => call<KnowledgeFolder>("get_knowledge_folder", { id }),
   createKnowledgeFolder: (input: KnowledgeFolderInput) =>
@@ -190,6 +190,8 @@ export const api = {
   deleteKnowledgePage: (id: string) => call<TrashItem>("delete_knowledge_page", { id }),
   deleteKnowledgeFolder: (id: string) =>
     call<TrashItem[]>("delete_knowledge_folder", { id }),
+  moveKnowledgeFolderSpace: (id: string, space: Exclude<Space, "all">) =>
+    call<KnowledgeFolder>("move_knowledge_folder_space", { id, space }),
   copyNoteToKnowledge: (noteId: string, space: Exclude<Space, "all">, parentId?: string | null, moveSource = false) =>
     call<KnowledgePage>("copy_note_to_knowledge", { noteId, space, parentId, moveSource }),
   listWikiLinks: (id: string, kind: DocumentKind) =>
@@ -216,6 +218,8 @@ export const api = {
   exportPdf: (id: string, targetPath: string) => call<string>("export_pdf", { id, targetPath }),
   ocrPdf: (id: string) => call<PdfDocument>("ocr_pdf", { id }),
   deleteDocument: (id: string) => call<TrashItem>("delete_document", { id }),
+  moveDocumentSpace: (id: string, space: Exclude<Space, "all">) =>
+    call<PdfDocument>("move_document_space", { id, space }),
   runAi: (request: AiRequest) => call<AiResult>("run_ai", { request }),
   listPlugins: () => call<PluginManifest[]>("list_plugins"),
   installPlugin: (sourcePath: string) => call<PluginManifest>("install_plugin", { sourcePath }),

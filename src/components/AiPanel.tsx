@@ -1,3 +1,4 @@
+import { Button } from "./ui";
 import { useState } from "react";
 import { api, isTauri } from "../lib/api";
 import type { AiRequest, AiResult } from "../types";
@@ -45,8 +46,8 @@ export function AiPanel({ content, context = "", compact = false }: AiPanelProps
   return <section className={`ai-panel ${compact ? "is-compact" : ""}`}>
     <div className="ai-panel-heading"><div><span className="eyebrow">可选能力</span><h3>AI 工作台</h3></div><span className="ai-local-badge">默认关闭 · 本地优先</span></div>
     <p className="ai-panel-description">只会发送你在设置中明确允许的内容；未启用 Provider 时不会发起请求。</p>
-    <div className="ai-actions">{operations.map((operation) => <button className="small-button subtle" key={operation.id} onClick={() => void run(operation.id)} disabled={running || !content.trim()}>{running ? "处理中…" : operation.label}</button>)}</div>
-    <div className="ai-question"><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="AI 问答问题（按需填写）" /><button className="small-button subtle" onClick={() => void run("qa")} disabled={running || !content.trim() || !question.trim()}>问答</button></div>
+    <div className="ai-actions">{operations.map((operation) => <Button size="small" variant="subtle" key={operation.id} onClick={() => void run(operation.id)} disabled={running || !content.trim()}>{running ? "处理中…" : operation.label}</Button>)}</div>
+    <div className="ai-question"><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="AI 问答问题（按需填写）" /><Button size="small" variant="subtle" onClick={() => void run("qa")} disabled={running || !content.trim() || !question.trim()}>问答</Button></div>
     {error ? <div className="ai-error" aria-live="polite">{error}</div> : null}
     {result ? <div className="ai-result" aria-live="polite"><div className="ai-result-meta">{result.operation} · {result.model}</div><pre>{result.content}</pre></div> : null}
   </section>;

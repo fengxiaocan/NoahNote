@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PageId } from "../types";
+import { DialogLayer } from "./ui";
 
 export type PaletteCommand = {
   id: string;
@@ -48,7 +49,6 @@ export function CommandPalette({ onClose, onSelect }: CommandPaletteProps) {
   useEffect(() => setActiveIndex(0), [query]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
       if (event.key === "ArrowDown") { event.preventDefault(); setActiveIndex((index) => Math.min(index + 1, Math.max(0, filtered.length - 1))); }
       if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((index) => Math.max(0, index - 1)); }
       if (event.key === "Enter" && filtered[activeIndex]) { event.preventDefault(); onSelect(filtered[activeIndex]); }
@@ -56,5 +56,5 @@ export function CommandPalette({ onClose, onSelect }: CommandPaletteProps) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeIndex, filtered, onClose, onSelect]);
-  return <div className="modal-backdrop command-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="command-card"><div className="command-input-wrap"><span>⌘</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入命令或搜索功能…" /></div><div className="command-list">{filtered.length === 0 ? <div className="command-empty">没有匹配的命令</div> : filtered.map((command, index) => <button className={["command-row", index === activeIndex ? "is-active" : ""].join(" ")} key={command.id} onClick={() => onSelect(command)}><span className="command-symbol">{command.action === "note" ? "▤" : command.action === "task" ? "✓" : command.action === "project" ? "◆" : command.action === "inbox" ? "▣" : command.action === "spark" || command.action === "sparks" ? "✦" : "→"}</span><span className="command-copy"><strong>{command.label}</strong><small>{command.description}</small></span>{command.shortcut ? <kbd>{command.shortcut}</kbd> : null}</button>)}</div><div className="command-footer"><span>↑↓ 选择</span><span>Enter 执行</span><span>Esc 关闭</span></div></div></div>;
+  return <DialogLayer onClose={onClose} className="command-backdrop"><div className="command-card" role="dialog" aria-modal="true" aria-label="命令面板"><div className="command-input-wrap"><span aria-hidden="true">⌘</span><input aria-label="搜索命令" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入命令或搜索功能…" /></div><div className="command-list">{filtered.length === 0 ? <div className="command-empty">没有匹配的命令</div> : filtered.map((command, index) => <button className={["command-row", index === activeIndex ? "is-active" : ""].join(" ")} key={command.id} onClick={() => onSelect(command)}><span className="command-symbol">{command.action === "note" ? "▤" : command.action === "task" ? "✓" : command.action === "project" ? "◆" : command.action === "inbox" ? "▣" : command.action === "spark" || command.action === "sparks" ? "✦" : "→"}</span><span className="command-copy"><strong>{command.label}</strong><small>{command.description}</small></span>{command.shortcut ? <kbd>{command.shortcut}</kbd> : null}</button>)}</div><div className="command-footer"><span>↑↓ 选择</span><span>Enter 执行</span><span>Esc 关闭</span></div></div></DialogLayer>;
 }

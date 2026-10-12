@@ -277,6 +277,48 @@ impl WorkspaceRepository {
     pub fn get_document(&self, id: &str) -> AppResult<PdfDocument> {
         self.database.get_pdf_document(id)
     }
+    pub fn move_document_space(&mut self, id: &str, space: Space) -> AppResult<PdfDocument> {
+        validate_space(&space)?;
+        let mut document = self.database.get_pdf_document(id)?;
+        if document.space == space {
+            return Ok(document);
+        }
+
+        let previous = document.clone();
+        let previous_pdf = self.pdf_path(&previous);
+        let previous_metadata = self.pdf_metadata_path(&previous);
+        document.space = space;
+        document.relative_path = format!("{}/documents/pdfs/{}.pdf", document.space.as_str(), document.id);
+        document.updated_at = now();
+        document.revision += 1;
+        document.device_id = self.settings.device_id.clone();
+        let next_pdf = self.pdf_path(&document);
+        let next_metadata = self.pdf_metadata_path(&document);
+        if next_pdf.exists() || next_metadata.exists() {
+            return Err(AppError::Validation("目标空间中已存在这份 PDF".into()));
+        }
+        if let Some(parent) = next_pdf.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::rename(&previous_pdf, &next_pdf)?;
+
+        let update_result = (|| -> AppResult<()> {
+            self.persist_pdf_document(&document)?;
+            self.database.upsert_pdf_document(&document)?;
+            self.index_pdf_semantics(&document)?;
+            remove_if_exists(&previous_metadata)?;
+            Ok(())
+        })();
+        if let Err(error) = update_result {
+            let _ = remove_if_exists(&next_metadata);
+            let _ = fs::rename(&next_pdf, &previous_pdf);
+            let _ = self.persist_pdf_document(&previous);
+            let _ = self.database.upsert_pdf_document(&previous);
+            let _ = self.index_pdf_semantics(&previous);
+            return Err(error);
+        }
+        Ok(document)
+    }
     pub fn import_pdf(&mut self, source_path: &str, space: Space) -> AppResult<PdfDocument> {
         validate_space(&space)?;
         let source = PathBuf::from(source_path);
@@ -544,6 +586,128 @@ impl WorkspaceRepository {
         self.persist_knowledge_folder(&folder)?;
         self.database.upsert_knowledge_folder(&folder)?;
         Ok(folder)
+    }
+
+    pub fn move_knowledge_folder_space(
+        &mut self,
+        id: &str,
+        space: Space,
+    ) -> AppResult<KnowledgeFolder> {
+        validate_space(&space)?;
+        let root = self.database.get_knowledge_folder(id)?;
+        if root.space == space {
+            return Ok(root);
+        }
+
+        let all_folders = self.database.list_knowledge_folders(&Space::All, true)?;
+        let all_pages = self.database.list_knowledge_pages(&Space::All, true)?;
+        let mut folder_ids = BTreeSet::new();
+        folder_ids.insert(root.id.clone());
+        loop {
+            let previous_count = folder_ids.len();
+            for folder in &all_folders {
+                if folder
+                    .parent_id
+                    .as_ref()
+                    .is_some_and(|parent_id| folder_ids.contains(parent_id))
+                {
+                    folder_ids.insert(folder.id.clone());
+                }
+            }
+            if folder_ids.len() == previous_count {
+                break;
+            }
+        }
+
+        let mut folders = all_folders
+            .iter()
+            .filter(|folder| folder_ids.contains(&folder.id))
+            .cloned()
+            .collect::<Vec<_>>();
+        folders.sort_by_key(|folder| {
+            let mut depth = 0;
+            let mut parent_id = folder.parent_id.as_deref();
+            while let Some(id) = parent_id {
+                if !folder_ids.contains(id) {
+                    break;
+                }
+                depth += 1;
+                parent_id = all_folders
+                    .iter()
+                    .find(|candidate| candidate.id == id)
+                    .and_then(|candidate| candidate.parent_id.as_deref());
+            }
+            depth
+        });
+        let mut pages = all_pages
+            .into_iter()
+            .filter(|page| {
+                page.parent_id
+                    .as_ref()
+                    .is_some_and(|parent_id| folder_ids.contains(parent_id))
+            })
+            .collect::<Vec<_>>();
+
+        let mut titles = BTreeSet::new();
+        for title in folders
+            .iter()
+            .filter(|folder| !folder.archived)
+            .map(|folder| (folder.id.as_str(), folder.name.as_str()))
+            .chain(
+                pages
+                    .iter()
+                    .filter(|page| !page.archived)
+                    .map(|page| (page.id.as_str(), page.title.as_str())),
+            )
+        {
+            if !titles.insert(title.1.to_string()) {
+                return Err(AppError::Validation("知识库目录中存在重复名称，无法移动".into()));
+            }
+            self.ensure_knowledge_title_available(&space, title.1, Some(title.0))?;
+        }
+
+        for mut folder in folders.drain(..) {
+            let previous = folder.clone();
+            folder.space = space.clone();
+            if folder.id == root.id
+                || !folder
+                    .parent_id
+                    .as_ref()
+                    .is_some_and(|parent_id| folder_ids.contains(parent_id))
+            {
+                folder.parent_id = None;
+            }
+            folder.updated_at = now();
+            folder.revision = previous.revision + 1;
+            folder.device_id = self.settings.device_id.clone();
+            folder.workspace_id = WORKSPACE_ID.into();
+            self.persist_knowledge_folder(&folder)?;
+            self.database.upsert_knowledge_folder(&folder)?;
+            self.remove_knowledge_folder_file(&previous)?;
+        }
+
+        for mut page in pages.drain(..) {
+            let previous = page.clone();
+            page.space = space.clone();
+            if !page
+                .parent_id
+                .as_ref()
+                .is_some_and(|parent_id| folder_ids.contains(parent_id))
+            {
+                page.parent_id = None;
+            }
+            page.updated_at = now();
+            page.revision = previous.revision + 1;
+            page.device_id = self.settings.device_id.clone();
+            page.workspace_id = WORKSPACE_ID.into();
+            self.persist_knowledge_page(&page)?;
+            self.database.upsert_knowledge_page(&page)?;
+            self.remove_knowledge_page_files(&previous)?;
+            self.index_knowledge_semantics(&page)?;
+            self.save_knowledge_page_version(&page)?;
+        }
+        self.rebuild_wiki_links()?;
+        self.database.get_knowledge_folder(id)
     }
 
     pub fn create_knowledge_page(&mut self, input: KnowledgePageInput) -> AppResult<KnowledgePage> {
