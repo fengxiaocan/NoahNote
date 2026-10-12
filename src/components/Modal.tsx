@@ -62,6 +62,7 @@ export function CreateModal({ kind, space, projects, onClose, onSave }: CreateMo
           <IconButton className="close-button" label="关闭" onClick={onClose}>×</IconButton>
         </div>
 
+        <div className="modal-body">
         {kind === "project" ? (
           <>
             <label>项目名称<TextField autoFocus value={String(values.name ?? "")} onChange={(event) => set("name", event.target.value)} placeholder="例如：桌面端工具" /></label>
@@ -121,7 +122,8 @@ export function CreateModal({ kind, space, projects, onClose, onSave }: CreateMo
           </>
         )}
 
-        {error ? <div className="form-error">{error}</div> : null}
+          {error ? <div className="form-error">{error}</div> : null}
+        </div>
         <div className="modal-actions">
           <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
           <Button type="submit" variant="primary" disabled={saving}>{saving ? "保存中…" : "保存"}</Button>

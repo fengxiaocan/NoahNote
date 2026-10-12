@@ -229,6 +229,8 @@ export const api = {
   addAttachment: (sourcePath: string, space: Exclude<Space, "all">, entityId?: string | null) =>
     call<string>("add_attachment", { sourcePath, space, entityId }),
   readTextFile: (sourcePath: string) => call<string>("read_text_file", { sourcePath }),
+  batchCreateNotes: (inputs: NoteInput[]) => call<Note[]>("batch_create_notes", { inputs }),
+  scanMarkdownFiles: (folderPath: string) => call<string[]>("scan_markdown_files", { folderPath }),
   createBackup: () => call<BackupInfo>("create_backup"),
   listBackups: () => call<BackupInfo[]>("list_backups"),
   restoreBackup: (name: string) => call<string>("restore_backup", { name }),

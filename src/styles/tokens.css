@@ -1,0 +1,241 @@
+/**
+ * NoahNote Design System Tokens
+ * Core Rule: Pages organize content, Design System defines appearances.
+ * 4/8 Grid System, 5-level Radii, Semantic Colors, Strict Button & Dialog Specs.
+ */
+
+:root {
+  /* =========================================================================
+   * 1. Semantic Color Tokens - Light Theme
+   * ========================================================================= */
+  --page-bg: #f5f6f8;
+  --sidebar-bg: #fbfbfc;
+  --topbar-bg: rgba(255, 255, 255, 0.85);
+  --surface: #ffffff;
+  --surface-soft: #f8f9fb;
+  --surface-elevated: #ffffff;
+
+  /* Ink & Typography */
+  --ink: #1e293b;
+  --text: #334155;
+  --text-strong: #0f172a;
+  --muted: #64748b;
+  --muted-soft: #94a3b8;
+
+  /* Borders & Lines */
+  --line: #e2e8f0;
+  --line-soft: #edf2f7;
+  --line-strong: #cbd5e1;
+
+  /* Form Fields */
+  --field: #f8fafc;
+  --field-border: #e2e8f0;
+  --field-focus-bg: #ffffff;
+  --field-focus-border: var(--accent);
+  --field-focus-ring: rgba(69, 104, 215, 0.14);
+  --hover: #f1f3f7;
+  --active: #e8ecf3;
+
+  /* Brand & Accent */
+  --accent: #4568d7;
+  --accent-hover: #3657c4;
+  --accent-dark: #3153bd;
+  --accent-soft: #edf1ff;
+  --accent-soft-hover: #e0e7fe;
+  --accent-text: #3153bd;
+
+  /* Semantic Feedback & Status */
+  --green: #16a34a;
+  --green-hover: #15803d;
+  --green-soft: #f0fdf4;
+  --green-border: #bbf7d0;
+
+  --orange: #d97706;
+  --orange-hover: #b45309;
+  --orange-soft: #fffbeb;
+  --orange-border: #fde68a;
+
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --danger-dark: #991b1b;
+  --danger-soft: #fef2f2;
+  --danger-border: #fca5a5;
+
+  --info: #0284c7;
+  --info-hover: #0369a1;
+  --info-soft: #f0f9ff;
+  --info-border: #bae6fd;
+
+  /* Modal & Dialog System Tokens */
+  --modal-backdrop: rgba(15, 23, 42, 0.48);
+  --modal-card-bg: var(--surface);
+  --modal-card-border: var(--line);
+  --modal-header-bg: var(--surface);
+  --modal-footer-bg: var(--surface-soft);
+  --modal-shadow: 0 24px 64px rgba(15, 23, 42, 0.22), 0 4px 16px rgba(15, 23, 42, 0.08);
+
+  /* Global Elevation & Shadows */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow: 0 10px 28px rgba(28, 39, 63, 0.06);
+  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --shadow-popover: 0 16px 40px rgba(28, 39, 63, 0.15);
+
+  /* =========================================================================
+   * 2. Spacing Grid Tokens (4 / 8 System)
+   * ========================================================================= */
+  --space-0: 0px;
+  --space-1: 4px;   /* xs: 紧凑内边距、微调间隙 */
+  --space-2: 8px;   /* sm: 小元素间距、按钮内图标间距 */
+  --space-3: 12px;  /* compact: 表单项与标签、关联元素 */
+  --space-4: 16px;  /* base: 标准内容留白、卡片内边距 */
+  --space-5: 20px;  /* comfortable: 重点卡片/弹窗内边距 */
+  --space-6: 24px;  /* lg: 模块间距、弹窗四周留白 */
+  --space-8: 32px;  /* xl: 区块留白、页面大间距 */
+  --space-10: 40px; /* 2xl: 触控区标准 / 显著留白 */
+  --space-12: 48px; /* 3xl: 超大留白 / 主操作基准 */
+  --space-16: 64px; /* 4xl: Section 宏观分隔 */
+
+  /* =========================================================================
+   * 3. Radii Tokens (Strict 5-Level + Full)
+   * ========================================================================= */
+  --radius-xs: 4px;     /* 极小标签、Badge、单项状态点 */
+  --radius-sm: 8px;     /* Chip、小控件、Kbd、Tags、输入框、关闭按钮 */
+  --radius-md: 12px;    /* 标准按钮、TextField、卡片内元素 */
+  --radius-lg: 16px;    /* Card、Popovers、内容面板 */
+  --radius-xl: 20px;    /* Dialog、Modal 弹窗容器 */
+  --radius-full: 9999px;/* Avatar、Pill、圆形图标按钮 */
+
+  /* =========================================================================
+   * 4. Typography Hierarchy Tokens
+   * ========================================================================= */
+  --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+
+  --font-size-2xs: 10px;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 22px;
+  --font-size-3xl: 26px;
+
+  --line-height-none: 1;
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.35;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.65;
+
+  /* =========================================================================
+   * 5. Component Size Standards
+   * ========================================================================= */
+  --button-height-lg: 48px;
+  --button-height-md: 40px;
+  --button-height-sm: 32px;
+
+  --input-height-md: 40px;
+  --input-height-sm: 32px;
+
+  --touch-target-min: 40px;
+  --touch-target-rec: 44px;
+
+  /* =========================================================================
+   * 6. Z-Index Layer Hierarchy
+   * ========================================================================= */
+  --z-base: 1;
+  --z-sticky: 10;
+  --z-dropdown: 20;
+  --z-popover: 30;
+  --z-backdrop: 50;
+  --z-modal: 51;
+  --z-toast: 60;
+  --z-tooltip: 70;
+
+  /* =========================================================================
+   * 7. Layout & Content Bounds
+   * ========================================================================= */
+  --content-max-width: 1440px;
+  --reading-max-width: 820px;
+  --modal-max-width-sm: 440px;
+  --modal-max-width-md: 580px;
+  --modal-max-width-lg: 660px;
+  --modal-max-width-xl: 780px;
+  --modal-max-width-2xl: 960px;
+}
+
+/* =========================================================================
+ * Dark Mode Token Harmonization
+ * ========================================================================= */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --page-bg: #101721;
+  --sidebar-bg: #121a25;
+  --topbar-bg: rgba(16, 23, 33, 0.88);
+  --surface: #18212d;
+  --surface-soft: #202b39;
+  --surface-elevated: #243042;
+
+  --ink: #f1f5f9;
+  --text: #cbd5e1;
+  --text-strong: #ffffff;
+  --muted: #94a3b8;
+  --muted-soft: #64748b;
+
+  --line: #2a3545;
+  --line-soft: #202b39;
+  --line-strong: #3b495e;
+
+  --field: #192331;
+  --field-border: #324257;
+  --field-focus-bg: #1d293a;
+  --field-focus-border: var(--accent);
+  --field-focus-ring: rgba(134, 160, 255, 0.22);
+  --hover: #222d3d;
+  --active: #2b394d;
+
+  --accent: #7695fc;
+  --accent-hover: #8ba5ff;
+  --accent-dark: #a9bfff;
+  --accent-soft: #222f52;
+  --accent-soft-hover: #293863;
+  --accent-text: #a8beff;
+
+  --green: #4ade80;
+  --green-hover: #67e8f9;
+  --green-soft: #143524;
+  --green-border: #23593b;
+
+  --orange: #fbbf24;
+  --orange-hover: #fcd34d;
+  --orange-soft: #382914;
+  --orange-border: #5a4220;
+
+  --danger: #f87171;
+  --danger-hover: #fca5a5;
+  --danger-dark: #fecaca;
+  --danger-soft: #38181b;
+  --danger-border: #5f2429;
+
+  --info: #38bdf8;
+  --info-hover: #7dd3fc;
+  --info-soft: #162f44;
+  --info-border: #234b6e;
+
+  --modal-backdrop: rgba(5, 9, 15, 0.76);
+  --modal-card-bg: var(--surface);
+  --modal-card-border: var(--line);
+  --modal-header-bg: var(--surface);
+  --modal-footer-bg: var(--surface-soft);
+  --modal-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.35);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow: 0 16px 42px rgba(0, 0, 0, 0.27);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.38);
+  --shadow-popover: 0 20px 48px rgba(0, 0, 0, 0.45);
+}

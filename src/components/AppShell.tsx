@@ -36,6 +36,9 @@ interface AppShellProps {
   searchInputRef: RefObject<HTMLInputElement | null>;
   loading: boolean;
   inboxCount: number;
+  sidebarCollapsed: boolean;
+  sidebarCompact?: boolean;
+  onToggleSidebar: () => void;
   onNavigate: (page: PageId) => void;
   onSpaceChange: (space: Space) => void;
   onSearchChange: (query: string) => void;
@@ -57,6 +60,9 @@ export function AppShell({
   searchInputRef,
   loading,
   inboxCount,
+  sidebarCollapsed,
+  sidebarCompact = false,
+  onToggleSidebar,
   onNavigate,
   onSpaceChange,
   onSearchChange,
@@ -70,20 +76,30 @@ export function AppShell({
   children,
 }: AppShellProps) {
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${sidebarCompact ? "sidebar-compact" : ""}`}>
+      <aside className={`sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`}>
         <div className="brand-lockup">
           <div className="brand-mark">N</div>
-          <div>
+          <div className="brand-copy">
             <strong>Noah</strong>
             <span>工作助手</span>
           </div>
+          <button
+            type="button"
+            className="sidebar-toggle-btn sidebar-hide-btn"
+            title="隐藏侧边栏 (Ctrl + \)"
+            aria-label="隐藏侧边栏"
+            onClick={onToggleSidebar}
+          >
+            <span aria-hidden="true">⇤</span>
+          </button>
         </div>
 
         <div className="sidebar-section-label">工作台</div>
         <nav className="primary-nav" aria-label="主导航">
           {navItems.map((item) => (
             <button
+              type="button"
               className={`nav-item ${activePage === item.id ? "is-active" : ""}`}
               key={item.id}
               title={item.label}
@@ -104,6 +120,7 @@ export function AppShell({
         <div className="space-list">
           {(["personal", "work"] as const).map((item) => (
             <button
+              type="button"
               className={`space-nav-item ${space === item ? "is-active" : ""}`}
               key={item}
               title={`${spaceLabels[item]}空间`}
@@ -117,7 +134,7 @@ export function AppShell({
         </div>
 
         <div className="sidebar-bottom">
-          <button className={`nav-item ${activePage === "settings" ? "is-active" : ""}`} title="设置与同步" aria-label="设置与同步" onClick={() => onNavigate("settings")}>
+          <button type="button" className={`nav-item ${activePage === "settings" ? "is-active" : ""}`} title="设置与同步" aria-label="设置与同步" onClick={() => onNavigate("settings")}>
             <span className="nav-icon" aria-hidden="true">⚙</span>
             <span className="nav-label">设置与同步</span>
           </button>
@@ -133,22 +150,34 @@ export function AppShell({
 
       <div className="main-shell">
         <header className="topbar">
-          <div className="search-wrap">
-            <span className="search-icon" aria-hidden="true">⌕</span>
-            <input
-              aria-label="全局搜索"
-              placeholder="搜索任务、笔记、PDF、项目…"
-              ref={searchInputRef}
-              value={searchQuery}
-              onFocus={onSearchFocus}
-              onChange={(event) => onSearchChange(event.target.value)}
-            />
-            <kbd>Ctrl K</kbd>
+          <div className="topbar-left">
+            <button
+              type="button"
+              className={`sidebar-toggle-btn topbar-sidebar-btn ${sidebarCollapsed ? "is-collapsed" : ""}`}
+              title={sidebarCollapsed ? "展开侧边栏 (Ctrl + \\)" : "隐藏侧边栏 (Ctrl + \\)"}
+              aria-label={sidebarCollapsed ? "展开侧边栏" : "隐藏侧边栏"}
+              onClick={onToggleSidebar}
+            >
+              <span className="sidebar-toggle-icon" aria-hidden="true">{sidebarCollapsed ? "☰" : "⇤"}</span>
+              {sidebarCollapsed ? <span className="sidebar-toggle-label">展开侧栏</span> : null}
+            </button>
+
+            <div className="search-wrap">
+              <span className="search-icon" aria-hidden="true">⌕</span>
+              <input
+                aria-label="全局搜索"
+                placeholder="搜索任务、笔记、PDF、项目…"
+                ref={searchInputRef}
+                value={searchQuery}
+                onFocus={onSearchFocus}
+                onChange={(event) => onSearchChange(event.target.value)}
+              />
+              <kbd>Ctrl K</kbd>
             {searchQuery.trim() && searchResults.length > 0 ? (
               <div className="search-popover">
                 <div className="search-popover-heading">搜索结果 · {searchResults.length}</div>
                 {searchResults.slice(0, 8).map((result) => (
-                  <button className="search-result" key={`${result.kind}-${result.id}`} onClick={() => onOpenSearchResult(result)}>
+                  <button type="button" className="search-result" key={`${result.kind}-${result.id}`} onClick={() => onOpenSearchResult(result)}>
                     <span className={`result-type ${result.kind}`}>{result.kind === "note" ? "笔" : result.kind === "task" ? "✓" : result.kind === "project" ? "◆" : result.kind === "event" ? "◷" : result.kind === "checklist" ? "☑" : result.kind === "knowledge_page" ? "⌘" : result.kind === "pdf" ? "PDF" : "收"}</span>
                     <span className="result-copy">
                       <strong>{result.title}</strong>
@@ -160,6 +189,7 @@ export function AppShell({
               </div>
             ) : null}
           </div>
+        </div>
 
           <div className="topbar-actions">
             <SegmentedControl className="top-space-switcher" label="空间切换" variant="surface">
@@ -169,7 +199,7 @@ export function AppShell({
                 </SegmentButton>
               ))}
             </SegmentedControl>
-            <button className="quick-capture-button" title="快速记录" aria-label="快速记录" onClick={onQuickCapture}>
+            <button type="button" className="quick-capture-button" title="快速记录" aria-label="快速记录" onClick={onQuickCapture}>
               <span>＋</span><span className="quick-capture-label">快速记录</span><kbd>Ctrl ⇧ Space</kbd>
             </button>
             <IconButton className="theme-toggle" title={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"} label={theme === "dark" ? "切换到浅色主题" : "切换到暗色主题"} aria-pressed={theme === "dark"} onClick={onThemeToggle}>

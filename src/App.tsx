@@ -24,8 +24,16 @@ import { TemplatesPage } from "./pages/TemplatesPage";
 import { TodayPage } from "./pages/TodayPage";
 import { TrashPage } from "./pages/TrashPage";
 import type { KnowledgeFolderInput, KnowledgePageInput, ScheduleEventInput } from "./lib/api";
-import { importedNoteTitle, parseTaskImport } from "./lib/import";
-import type { AppSettings, BackupInfo, Checklist, ChecklistItem, ContentSpace, InboxItem, KnowledgeNode, KnowledgePage, Note, PageId, PdfDocument, PluginManifest, Project, ScheduleEvent, SearchResult, Space, SparkStage, SyncAction, SyncHistoryEntry, Task, Template, TemplateKind, TrashItem } from "./types";
+import { importedNoteTitle, parseMarkdownNoteImport, parseTaskImport } from "./lib/import";
+import {
+  applyPreferencesToDom,
+  loadPreferences,
+  savePreferences,
+  toggleSidebarPreference,
+  type UserPreferences,
+} from "./lib/preferences";
+import { cloneChecklist } from "./lib/checklists";
+import type { AppSettings, BackupInfo, Checklist, ChecklistItem, ContentSpace, InboxItem, KnowledgeNode, KnowledgePage, Note, PageId, PdfDocument, PluginManifest, Project, ScheduleEvent, SearchResult, Space, SparkStage, SyncAction, SyncHistoryEntry, Task, TaskPriority, TaskStatus, Template, TemplateKind, TrashItem } from "./types";
 
 const defaultSettings: AppSettings = {
   workspaceRoot: "本地 Workspace",
@@ -79,7 +87,11 @@ const defaultSettings: AppSettings = {
 
 export default function App() {
   const { confirm } = useAppDialogs();
-  const [activePage, setActivePage] = useState<PageId>("overview");
+  const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
+  const [activePage, setActivePage] = useState<PageId>(() => {
+    const prefs = loadPreferences();
+    return prefs.defaultStartupPage || "overview";
+  });
   const [space, setSpace] = useState<Space>("all");
   const [notes, setNotes] = useState<Note[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -118,7 +130,22 @@ export default function App() {
   const [scheduleCreateRequest, setScheduleCreateRequest] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
   const searchRef = useRef<HTMLInputElement | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3500);
+  }, []);
+
+  useEffect(() => {
+    applyPreferencesToDom(preferences);
+    savePreferences(preferences);
+  }, [preferences]);
+
+  const toggleSidebar = useCallback(() => {
+    setPreferences((current) => toggleSidebarPreference(current));
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -235,7 +262,10 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const modifier = event.ctrlKey || event.metaKey;
-      if (modifier && event.key.toLowerCase() === "k") {
+      if (modifier && event.key === "\\") {
+        event.preventDefault();
+        toggleSidebar();
+      } else if (modifier && event.key.toLowerCase() === "k") {
         event.preventDefault();
         searchRef.current?.focus();
       } else if (modifier && event.key.toLowerCase() === "p") {
@@ -333,14 +363,51 @@ export default function App() {
     if (!await confirm({ title: "删除任务", message: `删除“${task.title}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteTask(task.id), true);
   }, [confirm, run]);
+  const quickCreateTask = useCallback(async (draft: {
+    title: string;
+    priority?: TaskPriority;
+    dueDate?: string | null;
+    projectId?: string | null;
+    status?: TaskStatus;
+    parentId?: string | null;
+  }) => {
+    const targetSpace = space === "all" ? settings.defaultSpace : space;
+    await run(() => api.createTask({
+      title: draft.title,
+      space: targetSpace,
+      priority: draft.priority ?? "normal",
+      dueDate: draft.dueDate ?? null,
+      projectId: draft.projectId ?? null,
+      status: draft.status ?? "todo",
+      parentId: draft.parentId ?? null,
+    }), true);
+  }, [run, settings.defaultSpace, space]);
   const updateProject = useCallback((project: Project) => run(() => api.updateProject(project)), [run]);
   const moveProjectToSpace = useCallback((project: Project, nextSpace: ContentSpace) => run(() => api.updateProject({ ...project, space: nextSpace }), true), [run]);
-  const archiveProject = useCallback((project: Project) => run(() => api.archiveProject(project.id, true), true), [run]);
+  const toggleFavoriteProject = useCallback((project: Project) => updateProject({ ...project, favorite: !project.favorite }), [updateProject]);
+  const archiveProject = useCallback((project: Project) => run(() => api.archiveProject(project.id, !project.archived)), [run]);
   const deleteProject = useCallback(async (project: Project) => {
     if (!await confirm({ title: "删除项目", message: `删除“${project.name}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteProject(project.id), true);
     setSelectedProjectId(null);
   }, [confirm, run]);
+  const createTaskForProject = useCallback(async (title: string, projectId: string, targetSpace: Exclude<Space, "all">) => {
+    await run(() => api.createTask({
+      title,
+      space: targetSpace,
+      projectId,
+      status: "todo",
+      priority: "normal",
+    }), true);
+  }, [run]);
+  const createNoteForProject = useCallback(async (title: string, projectId: string, targetSpace: Exclude<Space, "all">) => {
+    await run(() => api.createNote({
+      title,
+      content: "",
+      space: targetSpace,
+      projectId,
+    }), true);
+  }, [run]);
   const saveEvent = useCallback(async (draft: ScheduleEventInput, existing?: ScheduleEvent) => {
     if (existing) {
       await run(() => api.updateEvent({ ...existing, ...draft, startTime: draft.startTime ?? null, endTime: draft.endTime ?? null, taskId: draft.taskId ?? null, projectId: draft.projectId ?? null }), true);
@@ -362,6 +429,16 @@ export default function App() {
     if (!await confirm({ title: "删除清单", message: `删除“${checklist.title}”？内容会进入回收站。`, confirmLabel: "移入回收站", tone: "danger" })) return;
     await run(() => api.deleteChecklist(checklist.id), true);
   }, [confirm, run]);
+  const duplicateChecklist = useCallback(async (checklist: Checklist) => {
+    const cloned = cloneChecklist(checklist);
+    await run(() => api.createChecklist({
+      title: cloned.title,
+      description: cloned.description,
+      items: cloned.items,
+      space: cloned.space,
+      tags: cloned.tags,
+    }), true);
+  }, [run]);
   const updateTemplate = useCallback((template: Template) => run(() => api.updateTemplate(template)), [run]);
   const moveTemplateToSpace = useCallback((template: Template, nextSpace: ContentSpace) => run(() => api.updateTemplate({ ...template, space: nextSpace }), true), [run]);
   const archiveTemplate = useCallback((template: Template) => run(() => api.archiveTemplate(template.id, true)), [run]);
@@ -393,36 +470,140 @@ export default function App() {
     await run(() => api.addAttachment(sourcePath, note.space, note.id));
   }, [run]);
 
-  const importNote = useCallback(async () => {
+  const importNotes = useCallback(async (options?: { folder?: boolean; projectId?: string | null }) => {
     if (!isTauri()) {
       setError("笔记导入需要在桌面应用中运行。");
       return;
     }
-    const selected = await open({
-      multiple: false,
-      directory: false,
-      title: "选择要导入的 Markdown 笔记",
-      filters: [{ name: "Markdown / 文本", extensions: ["md", "markdown", "txt"] }],
-    });
-    const sourcePath = Array.isArray(selected) ? selected[0] : selected;
-    if (!sourcePath) return;
+
+    let paths: string[] = [];
+
+    if (options?.folder) {
+      const selectedDir = await open({
+        multiple: false,
+        directory: true,
+        title: "选择包含 Markdown 笔记的文件夹",
+      });
+      const dirPath = Array.isArray(selectedDir) ? selectedDir[0] : selectedDir;
+      if (!dirPath) return;
+
+      try {
+        paths = await api.scanMarkdownFiles(dirPath);
+        if (paths.length === 0) {
+          setError("所选文件夹中未发现任何 Markdown (.md, .markdown, .txt) 文件。");
+          return;
+        }
+      } catch (cause) {
+        setError(errorMessage(cause));
+        return;
+      }
+    } else {
+      const selected = await open({
+        multiple: true,
+        directory: false,
+        title: "选择要导入的 Markdown 笔记（支持按住 Ctrl / Shift 多选）",
+        filters: [{ name: "Markdown / 文本", extensions: ["md", "markdown", "txt"] }],
+      });
+      if (!selected) return;
+      paths = Array.isArray(selected) ? selected : [selected];
+    }
+
+    if (paths.length === 0) return;
+
     try {
-      const content = await api.readTextFile(sourcePath);
-      const created = await run(() => api.createNote({
-        title: importedNoteTitle(sourcePath, content),
-        content,
-        space: createSpaceFor(settings, space),
-        projectId: null,
-        tags: [],
-      }));
-      if (isNote(created)) {
-        setSelectedNoteId(created.id);
+      const targetSpace = createSpaceFor(settings, space);
+      const inputs = await Promise.all(
+        paths.map(async (p) => {
+          const raw = await api.readTextFile(p);
+          const parsed = parseMarkdownNoteImport(p, raw);
+          return {
+            title: parsed.title,
+            content: parsed.content,
+            space: targetSpace,
+            projectId: options?.projectId ?? null,
+            tags: parsed.tags,
+          };
+        })
+      );
+
+      const createdList = await run(() => api.batchCreateNotes(inputs), true);
+      if (Array.isArray(createdList) && createdList.length > 0) {
+        setSelectedNoteId(createdList[0].id);
         setActivePage("notes");
+        showToast(
+          createdList.length === 1
+            ? `已成功导入 1 篇 Markdown 笔记「${createdList[0].title}」`
+            : `已成功导入 ${createdList.length} 篇 Markdown 笔记`
+        );
       }
     } catch (cause) {
       setError(errorMessage(cause));
     }
-  }, [run, settings, space]);
+  }, [run, settings, showToast, space]);
+
+  const importNoteFiles = useCallback(async (files: File[], projectId?: string | null) => {
+    const mdFiles = files.filter((f) => {
+      const name = f.name.toLowerCase();
+      return name.endsWith(".md") || name.endsWith(".markdown") || name.endsWith(".txt");
+    });
+    if (mdFiles.length === 0) return;
+
+    try {
+      const targetSpace = createSpaceFor(settings, space);
+      const inputs = await Promise.all(
+        mdFiles.map(async (file) => {
+          const raw = await file.text();
+          const parsed = parseMarkdownNoteImport(file.name, raw);
+          return {
+            title: parsed.title,
+            content: parsed.content,
+            space: targetSpace,
+            projectId: projectId ?? null,
+            tags: parsed.tags,
+          };
+        })
+      );
+
+      if (isTauri()) {
+        const createdList = await run(() => api.batchCreateNotes(inputs), true);
+        if (Array.isArray(createdList) && createdList.length > 0) {
+          setSelectedNoteId(createdList[0].id);
+          setActivePage("notes");
+          showToast(
+            createdList.length === 1
+              ? `已成功导入 1 篇 Markdown 笔记「${createdList[0].title}」`
+              : `已成功导入 ${createdList.length} 篇 Markdown 笔记`
+          );
+        }
+      } else {
+        const mockCreated = inputs.map((inp, idx) => ({
+          id: `note-${Date.now()}-${idx}`,
+          title: inp.title,
+          content: inp.content,
+          space: inp.space,
+          projectId: inp.projectId,
+          tags: inp.tags,
+          favorite: false,
+          archived: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          deviceId: "mock-device",
+          workspaceId: "mock-workspace",
+          revision: 1,
+        }));
+        setNotes((prev) => [...mockCreated, ...prev]);
+        setSelectedNoteId(mockCreated[0].id);
+        setActivePage("notes");
+        showToast(
+          mockCreated.length === 1
+            ? `已成功导入 1 篇 Markdown 笔记「${mockCreated[0].title}」`
+            : `已成功导入 ${mockCreated.length} 篇 Markdown 笔记`
+        );
+      }
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }, [run, settings, showToast, space]);
 
   const importTasks = useCallback(async () => {
     if (!isTauri()) {
@@ -663,6 +844,10 @@ export default function App() {
 
   const selectPaletteCommand = (command: PaletteCommand) => {
     setPaletteOpen(false);
+    if (command.action === "toggle-sidebar") {
+      toggleSidebar();
+      return;
+    }
     if (["note", "task", "project", "inbox", "spark", "checklist", "template"].includes(command.action)) {
       setModal(command.action as CreateKind);
       return;
@@ -684,6 +869,42 @@ export default function App() {
     setActivePage(command.action as PageId);
   };
 
+  const exportData = useCallback(() => {
+    const exportPayload = {
+      appName: "NoahNote",
+      exportedAt: new Date().toISOString(),
+      version: "0.1.0",
+      stats: {
+        notes: notes.length,
+        tasks: tasks.length,
+        projects: projects.length,
+        inbox: inbox.length,
+        events: events.length,
+        checklists: checklists.length,
+        templates: templates.length,
+      },
+      data: {
+        notes,
+        tasks,
+        projects,
+        inbox,
+        events,
+        checklists,
+        templates,
+      },
+    };
+
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `noahnote-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [checklists, events, inbox, notes, projects, tasks, templates]);
+
   const inboxItems = inbox.filter((item) => item.kind !== "spark");
   const sparkItems = inbox.filter((item) => item.kind === "spark");
 
@@ -704,25 +925,26 @@ export default function App() {
     switch (activePage) {
       case "inbox": return <InboxPage space={space} items={inboxItems} selectedId={selectedInboxId} onSelect={setSelectedInboxId} onCreate={create} onUpdate={updateInboxItem} onArchive={archiveInboxItem} onDelete={deleteInboxItem} onMove={moveInboxItem} onPromote={promoteInboxItem} />;
       case "sparks": return <SparksPage space={space} items={sparkItems} selectedId={selectedInboxId} onCreate={create} onStageChange={updateSparkStage} onArchive={archiveInboxItem} onDelete={deleteInboxItem} onMove={moveInboxItem} onPromote={promoteInboxItem} />;
-      case "today": return <TodayPage space={space} tasks={tasks} notes={notes} events={events} inbox={inbox} onCreate={create} onToggleTask={(task) => updateTask({ ...task, status: task.status === "done" ? "todo" : "done" })} />;
-      case "tasks": return <TasksPage space={space} tasks={tasks} projects={projects} selectedId={selectedTaskId} onSelect={setSelectedTaskId} onCreate={create} onUpdate={updateTask} onArchive={archiveTask} onMoveSpace={moveTaskToSpace} onDelete={deleteTask} onImport={importTasks} />;
+      case "today": return <TodayPage space={space} tasks={tasks} notes={notes} events={events} inbox={inbox} onCreate={create} onNavigate={setActivePage} onToggleTask={(task) => updateTask({ ...task, status: task.status === "done" ? "todo" : "done" })} />;
+      case "tasks": return <TasksPage space={space} tasks={tasks} projects={projects} selectedId={selectedTaskId} onSelect={setSelectedTaskId} onCreate={create} onUpdate={updateTask} onArchive={archiveTask} onMoveSpace={moveTaskToSpace} onDelete={deleteTask} onImport={importTasks} onQuickCreate={quickCreateTask} />;
       case "schedule": return <SchedulePage space={space} createSpace={createSpaceFor(settings, space)} events={events} tasks={tasks} projects={projects} createRequest={scheduleCreateRequest} selectedId={selectedEventId} onSelectionHandled={clearSelectedEvent} onSave={saveEvent} onArchive={archiveEvent} onDelete={deleteEvent} />;
-      case "notes": return <NotesPage space={space} notes={notes} projects={projects} selectedId={selectedNoteId} onSelect={setSelectedNoteId} onCreate={create} onUpdate={updateNote} onMoveSpace={moveNoteToSpace} onToggleFavorite={toggleFavoriteNote} onArchive={archiveNote} onDelete={deleteNote} onAttach={attachToNote} onImport={importNote} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} />;
-      case "projects": return <ProjectsPage space={space} projects={projects} tasks={tasks} notes={notes} selectedId={selectedProjectId} onSelect={setSelectedProjectId} onCreate={create} onUpdate={updateProject} onArchive={archiveProject} onMoveSpace={moveProjectToSpace} onDelete={deleteProject} />;
-      case "checklists": return <ChecklistsPage space={space} checklists={checklists} selectedId={selectedChecklistId} onSelect={setSelectedChecklistId} onCreate={create} onUpdate={updateChecklist} onArchive={archiveChecklist} onMoveSpace={moveChecklistToSpace} onDelete={deleteChecklist} />;
+      case "notes": return <NotesPage space={space} notes={notes} projects={projects} selectedId={selectedNoteId} onSelect={setSelectedNoteId} onCreate={create} onUpdate={updateNote} onMoveSpace={moveNoteToSpace} onToggleFavorite={toggleFavoriteNote} onArchive={archiveNote} onDelete={deleteNote} onAttach={attachToNote} onImport={importNotes} onImportFiles={importNoteFiles} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} preferences={preferences} onPreferencesChange={setPreferences} />;
+      case "projects": return <ProjectsPage space={space} projects={projects} tasks={tasks} notes={notes} selectedId={selectedProjectId} onSelect={setSelectedProjectId} onCreate={create} onUpdate={updateProject} onToggleFavorite={toggleFavoriteProject} onArchive={archiveProject} onMoveSpace={moveProjectToSpace} onDelete={deleteProject} onToggleTask={(task) => updateTask({ ...task, status: task.status === "done" ? "todo" : "done" })} onOpenTask={(id) => { setSelectedTaskId(id); setActivePage("tasks"); }} onOpenNote={(id) => { setSelectedNoteId(id); setActivePage("notes"); }} onCreateTaskForProject={createTaskForProject} onCreateNoteForProject={createNoteForProject} />;
+      case "checklists": return <ChecklistsPage space={space} checklists={checklists} selectedId={selectedChecklistId} onSelect={setSelectedChecklistId} onCreate={create} onUpdate={updateChecklist} onArchive={archiveChecklist} onMoveSpace={moveChecklistToSpace} onDelete={deleteChecklist} onDuplicate={duplicateChecklist} />;
       case "templates": return <TemplatesPage space={space} templates={templates} onCreate={create} onUpdate={updateTemplate} onArchive={archiveTemplate} onMoveSpace={moveTemplateToSpace} onDelete={deleteTemplate} onUse={useTemplate} />;
-      case "knowledge": return <KnowledgeBasePage space={space} createSpace={createSpaceFor(settings, space)} nodes={knowledgeNodes} notes={notes} selectedPage={selectedKnowledgePageForSpace} onSelectPage={(id) => { setSelectedKnowledgePageId(id); setSelectedKnowledgePage(null); }} onCreateFolder={createKnowledgeFolder} onCreatePage={createKnowledgePage} onUpdatePage={updateKnowledgePage} onMovePageSpace={moveKnowledgePageToSpace} onRenameFolder={updateKnowledgeFolder} onMoveFolder={moveKnowledgeFolder} onMoveFolderSpace={moveKnowledgeFolderToSpace} onDeletePage={deleteKnowledgePage} onDeleteFolder={deleteKnowledgeFolder} onImportNote={importNoteToKnowledge} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} />;
+      case "knowledge": return <KnowledgeBasePage space={space} createSpace={createSpaceFor(settings, space)} nodes={knowledgeNodes} notes={notes} selectedPage={selectedKnowledgePageForSpace} onSelectPage={(id) => { setSelectedKnowledgePageId(id); setSelectedKnowledgePage(null); }} onCreateFolder={createKnowledgeFolder} onCreatePage={createKnowledgePage} onUpdatePage={updateKnowledgePage} onMovePageSpace={moveKnowledgePageToSpace} onRenameFolder={updateKnowledgeFolder} onMoveFolder={moveKnowledgeFolder} onMoveFolderSpace={moveKnowledgeFolderToSpace} onDeletePage={deleteKnowledgePage} onDeleteFolder={deleteKnowledgeFolder} onImportNote={importNoteToKnowledge} onRestoreVersion={restoreVersion} onOpenTarget={openTarget} preferences={preferences} onPreferencesChange={setPreferences} />;
       case "documents": return <DocumentsPage space={space} documents={documents} selectedId={selectedDocumentId} onSelect={setSelectedDocumentId} onImport={importPdf} onExport={exportPdf} onOcr={ocrPdf} onDelete={deleteDocument} onMoveSpace={moveDocumentToSpace} />;
       case "plugins": return <PluginsPage plugins={plugins} onInstall={installPlugin} onToggle={togglePlugin} />;
       case "archive": return <ArchivePage space={space} entries={archiveEntries} />;
       case "trash": return <TrashPage space={space} retentionDays={settings.trashRetentionDays} items={trashItems} onRestore={restoreTrash} onDelete={permanentlyDeleteTrash} onPurge={purgeTrash} />;
-      case "settings": return <SettingsPage settings={settings} backups={backups} syncHistory={syncHistory} onSave={saveSettings} onBackup={createBackup} onRestore={restoreBackup} onSync={sync} theme={theme} onThemeChange={changeTheme} />;
+      case "settings": return <SettingsPage settings={settings} backups={backups} syncHistory={syncHistory} preferences={preferences} onSave={saveSettings} onPreferencesChange={setPreferences} onBackup={createBackup} onRestore={restoreBackup} onSync={sync} theme={theme} onThemeChange={changeTheme} stats={{ notesCount: notes.length, tasksCount: tasks.length, projectsCount: projects.length, knowledgeCount: knowledgeNodes.filter((n) => n.kind === "page").length, eventsCount: events.length, documentsCount: documents.length }} onExportData={exportData} />;
       default: return <OverviewPage space={space} notes={notes} tasks={tasks} projects={projects} inbox={inboxItems} events={events} checklists={checklists} onCreate={create} onNavigate={setActivePage} onToggleTask={updateTask} />;
     }
-  }, [activePage, archiveChecklist, archiveEntries, archiveEvent, archiveInboxItem, archiveNote, archiveProject, archiveTask, archiveTemplate, attachToNote, backups, changeTheme, checklists, clearSelectedEvent, createBackup, createKnowledgeFolder, createKnowledgePage, deleteChecklist, deleteDocument, deleteEvent, deleteInboxItem, deleteKnowledgeFolder, deleteKnowledgePage, deleteNote, deleteProject, deleteTask, deleteTemplate, documents, events, exportPdf, importNote, importNoteToKnowledge, importPdf, importTasks, inbox, installPlugin, knowledgeNodes, moveDocumentToSpace, moveInboxItem, moveKnowledgeFolder, moveKnowledgeFolderToSpace, moveKnowledgePageToSpace, moveNoteToSpace, moveProjectToSpace, moveTaskToSpace, moveTemplateToSpace, moveChecklistToSpace, moveEventToSpace, moveKnowledgeNodeToSpace, ocrPdf, permanentlyDeleteTrash, plugins, projects, promoteInboxItem, purgeTrash, restoreBackup, restoreKnowledgeNode, restoreTrash, restoreVersion, saveEvent, saveSettings, scheduleCreateRequest, selectedChecklistId, selectedDocumentId, selectedEventId, selectedInboxId, selectedKnowledgePageForSpace, selectedNoteId, selectedProjectId, selectedTaskId, settings, space, sync, syncHistory, tasks, templates, theme, toggleFavoriteNote, togglePlugin, trashItems, updateChecklist, updateInboxItem, updateKnowledgePage, updateNote, updateProject, updateSparkStage, updateTask, updateTemplate, useTemplate]);
+  }, [activePage, archiveChecklist, archiveEntries, archiveEvent, archiveInboxItem, archiveNote, archiveProject, archiveTask, archiveTemplate, attachToNote, backups, changeTheme, checklists, clearSelectedEvent, createBackup, createKnowledgeFolder, createKnowledgePage, deleteChecklist, deleteDocument, deleteEvent, deleteInboxItem, deleteKnowledgeFolder, deleteKnowledgePage, deleteNote, deleteProject, deleteTask, deleteTemplate, documents, events, exportPdf, importNoteToKnowledge, importPdf, importTasks, inbox, installPlugin, knowledgeNodes, moveDocumentToSpace, moveInboxItem, moveKnowledgeFolder, moveKnowledgeFolderToSpace, moveKnowledgePageToSpace, moveNoteToSpace, moveProjectToSpace, moveTaskToSpace, moveTemplateToSpace, moveChecklistToSpace, moveEventToSpace, moveKnowledgeNodeToSpace, ocrPdf, permanentlyDeleteTrash, plugins, projects, promoteInboxItem, purgeTrash, restoreBackup, restoreKnowledgeNode, restoreTrash, restoreVersion, saveEvent, saveSettings, scheduleCreateRequest, selectedChecklistId, selectedDocumentId, selectedEventId, selectedInboxId, selectedKnowledgePageForSpace, selectedNoteId, selectedProjectId, selectedTaskId, settings, space, sync, syncHistory, tasks, templates, theme, toggleFavoriteNote, togglePlugin, trashItems, updateChecklist, updateInboxItem, updateKnowledgePage, updateNote, updateProject, updateSparkStage, updateTask, updateTemplate, useTemplate, createNoteForProject, createTaskForProject, duplicateChecklist, exportData, importNoteFiles, importNotes, notes, preferences, quickCreateTask, setPreferences, toggleFavoriteProject]);
 
   const createSpace = space === "all" ? settings.defaultSpace : space;
-  return <AppShell activePage={activePage} space={space} searchQuery={searchQuery} searchResults={searchResults} searchInputRef={searchRef} loading={loading} inboxCount={inboxItems.filter((item) => !item.archived).length} onNavigate={setActivePage} onSpaceChange={setSpace} onSearchChange={setSearchQuery} onSearchFocus={() => undefined} onOpenSearchResult={openSearchResult} onQuickCapture={() => setModal("inbox")} theme={theme} onThemeToggle={toggleAppTheme} onMinimizeToTray={() => void minimizeToTray()} onRefresh={() => void reload()}>{!isTauri() ? <div className="dev-banner"><span>预览模式</span> 当前页面使用空数据；运行 <code>npm run tauri dev</code> 连接本地 Workspace。</div> : null}{error ? <div className="error-banner" role="alert"><span>!</span><span>{error}</span><button onClick={() => setError("")} aria-label="关闭提示">×</button></div> : null}{page}{modal ? <CreateModal kind={modal} space={createSpace} projects={projects} onClose={() => setModal(null)} onSave={(values) => handleCreate(modal, values)} /> : null}{paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} onSelect={selectPaletteCommand} /> : null}</AppShell>;
+
+  return <AppShell activePage={activePage} space={space} searchQuery={searchQuery} searchResults={searchResults} searchInputRef={searchRef} loading={loading} inboxCount={inboxItems.filter((item) => !item.archived).length} sidebarCollapsed={preferences.sidebarCollapsed} sidebarCompact={preferences.sidebarCompact} onToggleSidebar={toggleSidebar} onNavigate={setActivePage} onSpaceChange={setSpace} onSearchChange={setSearchQuery} onSearchFocus={() => undefined} onOpenSearchResult={openSearchResult} onQuickCapture={() => setModal("inbox")} theme={theme} onThemeToggle={toggleAppTheme} onMinimizeToTray={() => void minimizeToTray()} onRefresh={() => void reload()}>{!isTauri() ? <div className="dev-banner"><span>预览模式</span> 当前页面使用空数据；运行 <code>npm run tauri dev</code> 连接本地 Workspace。</div> : null}{error ? <div className="error-banner"><span>!</span><span>{error}</span><button type="button" onClick={() => setError("")} aria-label="关闭提示">×</button></div> : null}{toast ? <div className="toast-message">{toast}</div> : null}{page}{modal ? <CreateModal kind={modal} space={createSpace} projects={projects} onClose={() => setModal(null)} onSave={(values) => handleCreate(modal, values)} /> : null}{paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} onSelect={selectPaletteCommand} /> : null}</AppShell>;
 }
 
 function errorMessage(cause: unknown) {

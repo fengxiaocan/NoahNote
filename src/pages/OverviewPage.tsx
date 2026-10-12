@@ -1,6 +1,7 @@
 import type { Checklist, InboxItem, Note, PageId, Project, ScheduleEvent, Space, Task } from "../types";
 import { formatRelative, todayKey } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
+import { CheckIcon } from "../components/CheckIcon";
 import type { CreateKind } from "../components/Modal";
 import { Button, Card } from "../components/ui";
 
@@ -45,7 +46,7 @@ export function OverviewPage({ space, notes, tasks, projects, inbox, events, che
         <Card as="section" className="dashboard-card today-card">
           <div className="card-heading"><div><span className="card-kicker">今天</span><h3>{todayTasks.length ? `${todayTasks.length} 件待处理` : "今天暂时清爽"}</h3></div><Button variant="subtle" onClick={() => onNavigate("today")}>查看全部 →</Button></div>
           <div className="task-preview-list">
-            {todayTasks.length === 0 ? <EmptyCard icon="☀" text="没有安排在今天截止的任务" action="添加任务" onClick={() => onCreate("task")} /> : todayTasks.slice(0, 4).map((task) => <button className="task-preview" key={task.id} onClick={() => onToggleTask(task)}><span className={`check-circle ${task.status === "done" ? "checked" : ""}`}>{task.status === "done" ? "✓" : ""}</span><span>{task.title}</span><em className={`priority-dot ${task.priority}`} /></button>)}
+            {todayTasks.length === 0 ? <EmptyCard icon="☀" text="没有安排在今天截止的任务" action="添加任务" onClick={() => onCreate("task")} /> : todayTasks.slice(0, 4).map((task) => <button type="button" className="task-preview" key={task.id} onClick={() => onToggleTask(task)}><span className={`check-circle ${task.status === "done" ? "checked" : ""}`}><CheckIcon /></span><span>{task.title}</span><em className={`priority-dot ${task.priority}`} /></button>)}
           </div>
         </Card>
 
@@ -56,17 +57,17 @@ export function OverviewPage({ space, notes, tasks, projects, inbox, events, che
 
         <Card as="section" className="dashboard-card projects-card">
           <div className="card-heading"><div><span className="card-kicker">正在进行的项目</span><h3>{activeProjects.length ? `${activeProjects.length} 个项目` : "还没有项目"}</h3></div><Button variant="subtle" onClick={() => onNavigate("projects")}>查看项目 →</Button></div>
-          {activeProjects.length === 0 ? <EmptyCard icon="◆" text="为一组任务建立上下文" action="新建项目" onClick={() => onCreate("project")} /> : <div className="project-progress-list">{activeProjects.map((project) => <button className="project-progress" key={project.id} onClick={() => onNavigate("projects")}><div><span>{project.name}</span><strong>{project.progress}%</strong></div><div className="progress-track"><span style={{ width: `${project.progress}%` }} /></div></button>)}</div>}
+          {activeProjects.length === 0 ? <EmptyCard icon="◆" text="为一组任务建立上下文" action="新建项目" onClick={() => onCreate("project")} /> : <div className="project-progress-list">{activeProjects.map((project) => <button type="button" className="project-progress" key={project.id} onClick={() => onNavigate("projects")}><div><span>{project.name}</span><strong>{project.progress}%</strong></div><div className="progress-track"><span style={{ width: `${project.progress}%` }} /></div></button>)}</div>}
         </Card>
 
         <Card as="section" className="dashboard-card recent-card">
           <div className="card-heading"><div><span className="card-kicker">最近记录</span><h3>你刚刚留下的内容</h3></div><Button variant="subtle" onClick={() => onNavigate("notes")}>查看笔记 →</Button></div>
-          {recentNotes.length === 0 ? <EmptyCard icon="▤" text="记录你的第一个想法" action="新建笔记" onClick={() => onCreate("note")} /> : <div className="recent-list">{recentNotes.map((note) => <button className="recent-item" key={note.id} onClick={() => onNavigate("notes")}><span className="note-symbol">▤</span><span><strong>{note.title}</strong><small>{note.content.replace(/[#>*`\n]/g, " ").slice(0, 72) || "暂无正文"}</small></span><time>{formatRelative(note.updatedAt)}</time></button>)}</div>}
+          {recentNotes.length === 0 ? <EmptyCard icon="▤" text="记录你的第一个想法" action="新建笔记" onClick={() => onCreate("note")} /> : <div className="recent-list">{recentNotes.map((note) => <button type="button" className="recent-item" key={note.id} onClick={() => onNavigate("notes")}><span className="note-symbol">▤</span><span><strong>{note.title}</strong><small>{note.content.replace(/[#>*`\n]/g, " ").slice(0, 72) || "暂无正文"}</small></span><time>{formatRelative(note.updatedAt)}</time></button>)}</div>}
         </Card>
 
         <Card as="section" className="dashboard-card schedule-card">
           <div className="card-heading"><div><span className="card-kicker">今日安排</span><h3>{todayEvents.length ? `${todayEvents.length} 个日程` : "今天还没有日程"}</h3></div><Button variant="subtle" onClick={() => onNavigate("schedule")}>打开日程 →</Button></div>
-          {todayEvents.length === 0 ? <EmptyCard icon="◷" text="把任务放进时间里" action="创建日程" onClick={() => onNavigate("schedule")} /> : <div className="schedule-summary-list">{todayEvents.slice(0, 3).map((event) => <button className="schedule-summary-item" key={event.id} onClick={() => onNavigate("schedule")}><span>{event.allDay ? "全天" : event.startTime}</span><strong>{event.title}</strong></button>)}</div>}
+          {todayEvents.length === 0 ? <EmptyCard icon="◷" text="把任务放进时间里" action="创建日程" onClick={() => onNavigate("schedule")} /> : <div className="schedule-summary-list">{todayEvents.slice(0, 3).map((event) => <button type="button" className="schedule-summary-item" key={event.id} onClick={() => onNavigate("schedule")}><span>{event.allDay ? "全天" : event.startTime}</span><strong>{event.title}</strong></button>)}</div>}
         </Card>
 
         <Card as="section" className="dashboard-card checklist-card">
@@ -77,10 +78,10 @@ export function OverviewPage({ space, notes, tasks, projects, inbox, events, che
 
       <section className="quick-start-row">
         <span>现在想做什么？</span>
-        <button onClick={() => onCreate("task")}><span>✓</span> 新建任务</button>
-        <button onClick={() => onCreate("note")}><span>▤</span> 写一篇笔记</button>
-        <button onClick={() => onCreate("spark")}><span>✦</span> 记录灵光</button>
-        <button onClick={() => onCreate("project")}><span>◆</span> 创建项目</button>
+        <button type="button" onClick={() => onCreate("task")}><span>✓</span> 新建任务</button>
+        <button type="button" onClick={() => onCreate("note")}><span>▤</span> 写一篇笔记</button>
+        <button type="button" onClick={() => onCreate("spark")}><span>✦</span> 记录灵光</button>
+        <button type="button" onClick={() => onCreate("project")}><span>◆</span> 创建项目</button>
       </section>
     </div>
   );

@@ -587,6 +587,55 @@ pub fn read_text_file(source_path: String) -> AppResult<String> {
 }
 
 #[tauri::command]
+pub fn batch_create_notes(
+    state: State<'_, AppState>,
+    inputs: Vec<NoteInput>,
+) -> AppResult<Vec<Note>> {
+    let mut repo = repository(&state)?;
+    let mut created = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        created.push(repo.create_note(input)?);
+    }
+    Ok(created)
+}
+
+#[tauri::command]
+pub fn scan_markdown_files(folder_path: String) -> AppResult<Vec<String>> {
+    let root = Path::new(&folder_path);
+    if !root.is_dir() {
+        return Err(AppError::Validation(format!("目录不存在：{folder_path}")));
+    }
+    let mut results = Vec::new();
+
+    fn visit_dir(dir: &Path, results: &mut Vec<String>) -> std::io::Result<()> {
+        if dir.is_dir() {
+            let mut entries: Vec<_> = std::fs::read_dir(dir)?.filter_map(|e| e.ok()).collect();
+            entries.sort_by_key(|e| e.path());
+            for entry in entries {
+                let path = entry.path();
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with('.') {
+                    continue;
+                }
+                if path.is_dir() {
+                    visit_dir(&path, results)?;
+                } else if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    if ext_str == "md" || ext_str == "markdown" || ext_str == "txt" {
+                        results.push(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    visit_dir(root, &mut results)?;
+    Ok(results)
+}
+
+#[tauri::command]
 pub fn create_backup(state: State<'_, AppState>) -> AppResult<BackupInfo> {
     let repo = repository(&state)?;
     backup::create(&repo)

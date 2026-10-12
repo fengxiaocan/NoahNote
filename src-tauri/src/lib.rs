@@ -194,6 +194,8 @@ pub fn run() {
             commands::set_plugin_enabled,
             commands::add_attachment,
             commands::read_text_file,
+            commands::batch_create_notes,
+            commands::scan_markdown_files,
             commands::create_backup,
             commands::list_backups,
             commands::restore_backup,

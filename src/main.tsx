@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppDialogsProvider } from "./components/AppDialogs";
+import "./styles/tokens.css";
 import "./styles/app.css";
 import "./styles/command.css";
 
