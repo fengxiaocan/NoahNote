@@ -167,42 +167,40 @@ export function TemplatesPage({
                 {filteredTemplates.map((template) => {
                   const isSelected = selected?.id === template.id;
                   return (
-                    <SelectableListItem
-                      key={template.id}
-                      className="template-list-item"
-                      selected={isSelected}
-                      onClick={() => setSelectedId(template.id)}
-                    >
-                      <div className="template-item-header">
-                        <span className={`template-kind-pill ${template.kind}`}>
-                          {kindLabels[template.kind]}
-                        </span>
-                        <strong className="template-item-title" title={template.name}>
-                          {template.name}
-                        </strong>
-                        <button
-                          type="button"
-                          className="template-use-quick-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onUse(template);
-                          }}
-                          title="使用此模板创建内容"
-                        >
-                          使用 →
-                        </button>
-                      </div>
+                    <div key={template.id} className="template-card-shell">
+                      <SelectableListItem
+                        className="template-list-item"
+                        selected={isSelected}
+                        onClick={() => setSelectedId(template.id)}
+                      >
+                        <div className="template-item-header">
+                          <span className={`template-kind-pill ${template.kind}`}>
+                            {kindLabels[template.kind]}
+                          </span>
+                          <strong className="template-item-title" title={template.name}>
+                            {template.name}
+                          </strong>
+                        </div>
 
-                      <p className="template-item-desc" title={template.description || "暂无说明"}>
-                        {template.description || "暂无说明"}
-                      </p>
+                        <p className="template-item-desc" title={template.description || "暂无说明"}>
+                          {template.description || "暂无说明"}
+                        </p>
 
-                      <div className="template-item-footer">
-                        <span className="template-payload-meta">
-                          {Object.keys(template.payload || {}).length} 个默认字段
-                        </span>
-                      </div>
-                    </SelectableListItem>
+                        <div className="template-item-footer">
+                          <span className="template-payload-meta">
+                            {Object.keys(template.payload || {}).length} 个默认字段
+                          </span>
+                        </div>
+                      </SelectableListItem>
+                      <button
+                        type="button"
+                        className="template-use-quick-btn"
+                        onClick={() => onUse(template)}
+                        title="使用此模板创建内容"
+                      >
+                        使用 →
+                      </button>
+                    </div>
                   );
                 })}
               </div>

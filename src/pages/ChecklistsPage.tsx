@@ -65,8 +65,7 @@ export function ChecklistsPage({
 
   const selected = checklists.find((checklist) => checklist.id === selectedId) ?? filteredChecklists[0] ?? checklists[0] ?? null;
 
-  const toggleFavoriteChecklist = (checklist: Checklist, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const toggleFavoriteChecklist = (checklist: Checklist) => {
     onUpdate({ ...checklist, favorite: !checklist.favorite });
   };
 
@@ -239,94 +238,98 @@ export function ChecklistsPage({
                   const nextPendingItem = checklist.items.find((item) => !item.completed);
 
                   return (
-                    <SelectableListItem
-                      key={checklist.id}
-                      className={`checklist-list-item ${stats.isAllCompleted ? "is-all-done" : ""}`}
-                      selected={isSelected}
-                      onClick={() => onSelect(checklist.id)}
-                    >
-                      <div className="checklist-item-header">
-                        <div className="checklist-item-icon-wrap">
-                          <ChecklistStatusIcon
-                            isAllCompleted={stats.isAllCompleted}
-                            totalItems={stats.totalItems}
-                          />
+                    <div key={checklist.id} className="checklist-card-shell">
+                      <SelectableListItem
+                        className={`checklist-list-item ${stats.isAllCompleted ? "is-all-done" : ""}`}
+                        selected={isSelected}
+                        onClick={() => onSelect(checklist.id)}
+                      >
+                        <div className="checklist-item-header">
+                          <div className="checklist-item-icon-wrap">
+                            <ChecklistStatusIcon
+                              isAllCompleted={stats.isAllCompleted}
+                              totalItems={stats.totalItems}
+                            />
+                          </div>
+                          <strong className="checklist-item-title" title={checklist.title}>
+                            {checklist.title}
+                          </strong>
                         </div>
-                        <strong className="checklist-item-title" title={checklist.title}>
-                          {checklist.title}
-                        </strong>
-                        <div className="checklist-card-actions" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            className="checklist-card-action-btn"
-                            onClick={(e) => handleDuplicate(checklist, e)}
-                            title="复制此清单"
-                          >
-                            ⎘
-                          </button>
-                          <button
-                            type="button"
-                            className={`star-button mini ${checklist.favorite ? "is-favorite" : ""}`}
-                            onClick={(e) => toggleFavoriteChecklist(checklist, e)}
-                            title={checklist.favorite ? "取消星标" : "标记星标"}
-                          >
-                            {checklist.favorite ? "★" : "☆"}
-                          </button>
-                        </div>
-                      </div>
 
-                      {checklist.description?.trim() && (
-                        <p className="checklist-item-desc" title={checklist.description.trim()}>
-                          {checklist.description.trim()}
-                        </p>
-                      )}
+                        {checklist.description?.trim() && (
+                          <p className="checklist-item-desc" title={checklist.description.trim()}>
+                            {checklist.description.trim()}
+                          </p>
+                        )}
 
-                      {/* Progress Track */}
-                      <div className="checklist-item-progress">
-                        <div className="progress-track mini">
-                          <div
-                            className={`progress-fill ${stats.isAllCompleted ? "green" : ""}`}
-                            style={{ width: `${stats.completionRate}%` }}
-                          />
-                        </div>
-                        <div className="checklist-item-meta">
-                          <span className="checklist-progress-text">
-                            {stats.completedItems}/{stats.totalItems} 项完成
-                          </span>
-                          {stats.isAllCompleted ? (
-                            <span className="check-all-done-pill">✓ 全部达成</span>
-                          ) : (
-                            <span className="checklist-rate-pill">{stats.completionRate}%</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Next Pending Item Preview */}
-                      {!stats.isAllCompleted && nextPendingItem && (
-                        <div className="checklist-next-step" title={`下一步: ${nextPendingItem.text}`}>
-                          <span className="next-step-dot" />
-                          <span className="next-step-label">下一步:</span>
-                          <span className="next-step-text">{nextPendingItem.text}</span>
-                        </div>
-                      )}
-
-                      {/* Footer: Tags + Update Time */}
-                      <div className="checklist-item-footer">
-                        <div className="checklist-tags-row">
-                          {checklist.tags.slice(0, 2).map((t) => (
-                            <span key={t} className="tag mini">
-                              #{t}
+                        {/* Progress Track */}
+                        <div className="checklist-item-progress">
+                          <div className="progress-track mini">
+                            <div
+                              className={`progress-fill ${stats.isAllCompleted ? "green" : ""}`}
+                              style={{ width: `${stats.completionRate}%` }}
+                            />
+                          </div>
+                          <div className="checklist-item-meta">
+                            <span className="checklist-progress-text">
+                              {stats.completedItems}/{stats.totalItems} 项完成
                             </span>
-                          ))}
-                          {checklist.tags.length > 2 && (
-                            <span className="tag mini more-tags">+{checklist.tags.length - 2}</span>
-                          )}
+                            {stats.isAllCompleted ? (
+                              <span className="check-all-done-pill">✓ 全部达成</span>
+                            ) : (
+                              <span className="checklist-rate-pill">{stats.completionRate}%</span>
+                            )}
+                          </div>
                         </div>
-                        <span className="checklist-update-time">
-                          {formatRelative(checklist.updatedAt)}
-                        </span>
+
+                        {/* Next Pending Item Preview */}
+                        {!stats.isAllCompleted && nextPendingItem && (
+                          <div className="checklist-next-step" title={`下一步: ${nextPendingItem.text}`}>
+                            <span className="next-step-dot" />
+                            <span className="next-step-label">下一步:</span>
+                            <span className="next-step-text">{nextPendingItem.text}</span>
+                          </div>
+                        )}
+
+                        {/* Footer: Tags + Update Time */}
+                        <div className="checklist-item-footer">
+                          <div className="checklist-tags-row">
+                            {checklist.tags.slice(0, 2).map((t) => (
+                              <span key={t} className="tag mini">
+                                #{t}
+                              </span>
+                            ))}
+                            {checklist.tags.length > 2 && (
+                              <span className="tag mini more-tags">+{checklist.tags.length - 2}</span>
+                            )}
+                          </div>
+                          <span className="checklist-update-time">
+                            {formatRelative(checklist.updatedAt)}
+                          </span>
+                        </div>
+                      </SelectableListItem>
+                      <div className="checklist-card-actions">
+                        <button
+                          type="button"
+                          className="checklist-card-action-btn"
+                          onClick={() => void handleDuplicate(checklist)}
+                          title="复制此清单"
+                          aria-label={`复制清单 ${checklist.title}`}
+                        >
+                          ⎘
+                        </button>
+                        <button
+                          type="button"
+                          className={`star-button mini ${checklist.favorite ? "is-favorite" : ""}`}
+                          onClick={() => toggleFavoriteChecklist(checklist)}
+                          title={checklist.favorite ? "取消星标" : "标记星标"}
+                          aria-label={`${checklist.favorite ? "取消星标" : "标记星标"} ${checklist.title}`}
+                          aria-pressed={checklist.favorite}
+                        >
+                          {checklist.favorite ? "★" : "☆"}
+                        </button>
                       </div>
-                    </SelectableListItem>
+                    </div>
                   );
                 })}
               </div>

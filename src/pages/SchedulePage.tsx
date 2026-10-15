@@ -68,7 +68,7 @@ export function SchedulePage({ space, createSpace, events, tasks, projects, crea
     <div className="page-stack schedule-page">
       <PageHeader eyebrow="时间组织" title="日程" description={`${space === "all" ? "全部空间" : space === "personal" ? "个人空间" : "工作空间"} · 把任务放进可以执行的时间里`} action={<Button variant="primary" onClick={() => setEditor({ date: anchor })}>＋ 新建日程</Button>} />
       <section className="calendar-toolbar">
-        <div className="calendar-heading"><IconButton onClick={() => shift(-1)} label="上一个时间段">‹</IconButton><strong>{heading}</strong><IconButton onClick={() => shift(1)} label="下一个时间段">›</IconButton><button type="button" className="small-button" onClick={() => setAnchor(todayKey())}>今天</button></div>
+        <div className="calendar-heading"><IconButton className="small" onClick={() => shift(-1)} label="上一个时间段">‹</IconButton><strong>{heading}</strong><IconButton className="small" onClick={() => shift(1)} label="下一个时间段">›</IconButton><button type="button" className="small-button" onClick={() => setAnchor(todayKey())}>今天</button></div>
         <SegmentedControl className="calendar-view-tabs" label="日程视图" variant="surface">{([ ["day", "日"], ["week", "周"], ["month", "月"], ["list", "列表"] ] as const).map(([value, label]) => <SegmentButton selected={view === value} key={value} onClick={() => setView(value)}>{label}</SegmentButton>)}</SegmentedControl>
       </section>
       {view === "day" ? <DayView date={anchor} events={visibleEvents} onSelect={(event) => setEditor({ event, date: event.date })} onCreate={() => setEditor({ date: anchor })} /> : null}

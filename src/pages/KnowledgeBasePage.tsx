@@ -424,9 +424,11 @@ export function KnowledgeBasePage({
                 ×
               </IconButton>
             </div>
-            <p className="confirm-modal-body">
-              当前知识页面有未保存的修改，切换页面将丢失这些修改。请选择：
-            </p>
+            <div className="modal-body">
+              <p className="confirm-modal-body">
+                当前知识页面有未保存的修改，切换页面将丢失这些修改。请选择：
+              </p>
+            </div>
             <div className="modal-actions">
               <Button
                 type="button"
@@ -435,13 +437,14 @@ export function KnowledgeBasePage({
               >
                 留在当前页面
               </Button>
-              <button
+              <Button
                 type="button"
-                className="button secondary danger"
+                variant="secondary"
+                className="danger"
                 onClick={handleDiscardAndSwitch}
               >
                 放弃修改并切换
-              </button>
+              </Button>
               <Button
                 type="button"
                 variant="primary"
@@ -1752,8 +1755,12 @@ function KnowledgePageModal({
   };
 
   return (
-    <ModalFrame title="新建知识页面" onClose={onClose}>
-      <form onSubmit={submit}>
+    <ModalFrame
+      title="新建知识页面"
+      onClose={onClose}
+      actions={<ModalActions formId="knowledge-page-form" onClose={onClose} />}
+    >
+      <form id="knowledge-page-form" onSubmit={submit}>
         <label>
           页面标题
           <TextField
@@ -1787,7 +1794,6 @@ function KnowledgePageModal({
           />
         </label>
         {error ? <div className="form-error">{error}</div> : null}
-        <ModalActions onClose={onClose} />
       </form>
     </ModalFrame>
   );
@@ -1824,8 +1830,12 @@ function KnowledgeFolderModal({
   };
 
   return (
-    <ModalFrame title="新建知识目录" onClose={onClose}>
-      <form onSubmit={submit}>
+    <ModalFrame
+      title="新建知识目录"
+      onClose={onClose}
+      actions={<ModalActions formId="knowledge-folder-form" onClose={onClose} />}
+    >
+      <form id="knowledge-folder-form" onSubmit={submit}>
         <label>
           目录名称
           <TextField
@@ -1850,7 +1860,6 @@ function KnowledgeFolderModal({
           </SelectField>
         </label>
         {error ? <div className="form-error">{error}</div> : null}
-        <ModalActions onClose={onClose} />
       </form>
     </ModalFrame>
   );
@@ -1878,8 +1887,13 @@ function KnowledgeMoveFolderModal({
   );
 
   return (
-    <ModalFrame title={`移动目录 “${folder.title}”`} onClose={onClose}>
+    <ModalFrame
+      title={`移动目录 “${folder.title}”`}
+      onClose={onClose}
+      actions={<ModalActions formId="knowledge-move-folder-form" onClose={onClose} />}
+    >
       <form
+        id="knowledge-move-folder-form"
         onSubmit={(event) => {
           event.preventDefault();
           void onSave(parentId || null);
@@ -1900,7 +1914,6 @@ function KnowledgeMoveFolderModal({
           </SelectField>
         </label>
         <p className="field-hint">该目录下的所有页面和子目录将一并移至目标位置。</p>
-        <ModalActions onClose={onClose} />
       </form>
     </ModalFrame>
   );
@@ -1920,8 +1933,13 @@ function KnowledgeMovePageModal({
   const [parentId, setParentId] = useState(pageNode.parentId ?? "");
 
   return (
-    <ModalFrame title={`移动页面 “${pageNode.title}”`} onClose={onClose}>
+    <ModalFrame
+      title={`移动页面 “${pageNode.title}”`}
+      onClose={onClose}
+      actions={<ModalActions formId="knowledge-move-page-form" onClose={onClose} />}
+    >
       <form
+        id="knowledge-move-page-form"
         onSubmit={(event) => {
           event.preventDefault();
           void onSave(parentId || null);
@@ -1941,7 +1959,6 @@ function KnowledgeMovePageModal({
             ))}
           </SelectField>
         </label>
-        <ModalActions onClose={onClose} />
       </form>
     </ModalFrame>
   );
@@ -1969,8 +1986,12 @@ function KnowledgeRenameFolderModal({
   };
 
   return (
-    <ModalFrame title={`重命名目录 “${folder.title}”`} onClose={onClose}>
-      <form onSubmit={submit}>
+    <ModalFrame
+      title={`重命名目录 “${folder.title}”`}
+      onClose={onClose}
+      actions={<ModalActions formId="knowledge-rename-folder-form" onClose={onClose} />}
+    >
+      <form id="knowledge-rename-folder-form" onSubmit={submit}>
         <label>
           新目录名称
           <TextField
@@ -1980,7 +2001,6 @@ function KnowledgeRenameFolderModal({
           />
         </label>
         {error ? <div className="form-error">{error}</div> : null}
-        <ModalActions onClose={onClose} />
       </form>
     </ModalFrame>
   );
@@ -2003,8 +2023,14 @@ function KnowledgeDeleteFolderModal({
       eyebrow="删除确认"
       cardClassName="confirm-modal-card"
       onClose={onClose}
+      actions={
+        <div className="modal-actions">
+          <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
+          <Button type="button" variant="danger" onClick={onConfirm}>确认删除</Button>
+        </div>
+      }
     >
-      <div>
+      <>
         <p className="confirm-modal-body">
           确定要删除目录 <strong>“{folder.title}”</strong> 吗？
         </p>
@@ -2018,19 +2044,7 @@ function KnowledgeDeleteFolderModal({
             💡 提示：当前目录为空目录，删除后不可直接恢复。
           </div>
         )}
-        <div className="modal-actions">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            取消
-          </Button>
-          <button
-            type="button"
-            className="button primary danger"
-            onClick={onConfirm}
-          >
-            确认删除
-          </button>
-        </div>
-      </div>
+      </>
     </ModalFrame>
   );
 }
@@ -2050,24 +2064,16 @@ function KnowledgeDeletePageModal({
       eyebrow="删除确认"
       cardClassName="confirm-modal-card"
       onClose={onClose}
-    >
-      <div>
-        <p className="confirm-modal-body">
-          确定要删除知识页面 <strong>“{pageTitle}”</strong> 吗？删除后可在回收站找回。
-        </p>
+      actions={
         <div className="modal-actions">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            取消
-          </Button>
-          <button
-            type="button"
-            className="button primary danger"
-            onClick={onConfirm}
-          >
-            确认删除
-          </button>
+          <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
+          <Button type="button" variant="danger" onClick={onConfirm}>确认删除</Button>
         </div>
-      </div>
+      }
+    >
+      <p className="confirm-modal-body">
+        确定要删除知识页面 <strong>“{pageTitle}”</strong> 吗？删除后可在回收站找回。
+      </p>
     </ModalFrame>
   );
 }
@@ -2090,8 +2096,13 @@ function ImportNoteModal({
   const [moveSource, setMoveSource] = useState(false);
 
   return (
-    <ModalFrame title="从笔记导入知识库" onClose={onClose}>
+    <ModalFrame
+      title="从笔记导入知识库"
+      onClose={onClose}
+      actions={<ModalActions formId="knowledge-import-note-form" onClose={onClose} disabled={!noteId} />}
+    >
       <form
+        id="knowledge-import-note-form"
         onSubmit={(event) => {
           event.preventDefault();
           if (noteId) void onSave(noteId, parentId || null, moveSource);
@@ -2136,7 +2147,6 @@ function ImportNoteModal({
           />
           导入后将原笔记移入回收站（移动）
         </label>
-        <ModalActions onClose={onClose} disabled={!noteId} />
       </form>
     </ModalFrame>
   );
@@ -2147,12 +2157,14 @@ function ModalFrame({
   eyebrow = "知识库",
   cardClassName = "knowledge-modal",
   onClose,
+  actions,
   children,
 }: {
   title: string;
   eyebrow?: string;
   cardClassName?: string;
   onClose: () => void;
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -2173,6 +2185,7 @@ function ModalFrame({
           </IconButton>
         </div>
         <div className="modal-body">{children}</div>
+        {actions}
       </div>
     </DialogLayer>
   );
@@ -2181,16 +2194,18 @@ function ModalFrame({
 function ModalActions({
   onClose,
   disabled = false,
+  formId,
 }: {
   onClose: () => void;
   disabled?: boolean;
+  formId?: string;
 }) {
   return (
     <div className="modal-actions">
       <Button type="button" variant="secondary" onClick={onClose}>
         取消
       </Button>
-      <Button type="submit" variant="primary" disabled={disabled}>
+      <Button type="submit" form={formId} variant="primary" disabled={disabled}>
         保存
       </Button>
     </div>

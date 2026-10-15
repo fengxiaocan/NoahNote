@@ -282,13 +282,14 @@ export function NotesPage({
               >
                 留在当前笔记
               </Button>
-              <button
+              <Button
                 type="button"
-                className="button secondary danger"
+                variant="secondary"
+                className="danger"
                 onClick={handleDiscardAndSwitch}
               >
                 放弃修改并切换
-              </button>
+              </Button>
               <Button
                 type="button"
                 variant="primary"

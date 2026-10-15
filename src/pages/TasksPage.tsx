@@ -501,6 +501,7 @@ export function TasksPage({
                       <button
                         type="button"
                         className={`star-button ${task.favorite ? "is-favorite" : ""}`}
+                        aria-label={task.favorite ? "取消星标" : "标记星标"}
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleFavorite(task);
@@ -609,17 +610,16 @@ export function TasksPage({
                         >
                           归档
                         </Button>
-                        <button
-                          type="button"
-                          className="more-button delete-task-btn"
-                          title="删除任务"
+                        <IconButton
+                          className="delete-task-btn small"
+                          label="删除任务"
                           onClick={(e) => {
                             e.stopPropagation();
                             void onDelete(task);
                           }}
                         >
                           ×
-                        </button>
+                        </IconButton>
                       </div>
                     </article>
 
@@ -635,6 +635,7 @@ export function TasksPage({
                             <button
                               type="button"
                               className={`check-circle mini ${subtask.status === "done" ? "checked" : ""}`}
+                              aria-label={subtask.status === "done" ? "标记为待办" : "标记为完成"}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleStatus(subtask);
@@ -1019,6 +1020,7 @@ function TaskEditor({
             <button
               type="button"
               className={`star-button large ${favorite ? "is-favorite" : ""}`}
+              aria-label={favorite ? "取消星标" : "标记为星标任务"}
               onClick={() => setFavorite(!favorite)}
               title={favorite ? "取消星标" : "标记为星标任务"}
             >

@@ -141,13 +141,14 @@ export function ProjectsPage({
               >
                 留在当前项目
               </Button>
-              <button
+              <Button
                 type="button"
-                className="button secondary danger"
+                variant="secondary"
+                className="danger"
                 onClick={handleDiscardAndSwitch}
               >
                 放弃修改并切换
-              </button>
+              </Button>
               <Button variant="primary"
                
                 onClick={handleConfirmSaveAndSwitch}
@@ -195,16 +196,16 @@ export function ProjectsPage({
               >
                 取消
               </Button>
-              <button
+              <Button
                 type="button"
-                className="button primary danger"
+                variant="danger"
                 onClick={async () => {
                   await onDelete(deleteConfirmProject);
                   setDeleteConfirmProject(null);
                 }}
               >
                 确认删除
-              </button>
+              </Button>
             </div>
           </div>
         </DialogLayer>
@@ -847,6 +848,7 @@ function ProjectDetail({
                 className="remove-chip-btn"
                 onClick={() => handleRemoveTag(t)}
                 title="移除标签"
+                aria-label={`移除标签 ${t}`}
               >
                 ×
               </button>
@@ -932,6 +934,7 @@ function ProjectDetail({
                   className="jump-btn"
                   onClick={() => onOpenTask(task.id)}
                   title="在任务页面打开查看"
+                  aria-label={`在任务页面打开“${task.title}”`}
                 >
                   ↗
                 </button>

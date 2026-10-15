@@ -89,11 +89,11 @@ export function AppDialogsProvider({ children }: { children: ReactNode }) {
     {activeDialog ? <DialogLayer className="app-dialog-backdrop" focusKey={activeDialog} onClose={() => finish(activeDialog, activeDialog.kind === "confirm" ? false : null)}>
       {activeDialog.kind === "confirm" ? <div className="modal-card app-dialog-card" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
         <div className="modal-heading"><div><span className="eyebrow">确认操作</span><h2 id="app-dialog-title">{activeDialog.options.title ?? "请确认"}</h2></div></div>
-        <p className="app-dialog-message" id="app-dialog-message">{activeDialog.options.message}</p>
+        <div className="modal-body app-dialog-body"><p className="app-dialog-message" id="app-dialog-message">{activeDialog.options.message}</p></div>
         <div className="modal-actions"><Button variant="secondary" onClick={() => finish(activeDialog, false)}>{activeDialog.options.cancelLabel ?? "取消"}</Button><Button variant={activeDialog.options.tone === "danger" ? "danger" : "primary"} onClick={() => finish(activeDialog, true)}>{activeDialog.options.confirmLabel ?? "确定"}</Button></div>
       </div> : <form className="modal-card app-dialog-card" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message" onSubmit={(event) => submitPrompt(event, activeDialog)}>
         <div className="modal-heading"><div><span className="eyebrow">编辑内容</span><h2 id="app-dialog-title">{activeDialog.options.title ?? "请输入"}</h2></div></div>
-        <label className="app-dialog-label"><span id="app-dialog-message">{activeDialog.options.message}</span><TextField autoFocus ref={promptRef} defaultValue={activeDialog.options.initialValue ?? ""} placeholder={activeDialog.options.placeholder} /></label>
+        <div className="modal-body app-dialog-body"><label className="app-dialog-label"><span id="app-dialog-message">{activeDialog.options.message}</span><TextField autoFocus ref={promptRef} defaultValue={activeDialog.options.initialValue ?? ""} placeholder={activeDialog.options.placeholder} /></label></div>
         <div className="modal-actions"><Button type="button" variant="secondary" onClick={() => finish(activeDialog, null)}>{activeDialog.options.cancelLabel ?? "取消"}</Button><Button type="submit" variant="primary">{activeDialog.options.confirmLabel ?? "确定"}</Button></div>
       </form>}
     </DialogLayer> : null}
