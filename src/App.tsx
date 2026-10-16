@@ -873,7 +873,7 @@ export default function App() {
     const exportPayload = {
       appName: "NoahNote",
       exportedAt: new Date().toISOString(),
-      version: "0.1.0",
+      version: "1.0.0",
       stats: {
         notes: notes.length,
         tasks: tasks.length,

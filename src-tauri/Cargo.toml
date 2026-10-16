@@ -1,6 +1,6 @@
 [package]
 name = "noah_assistant"
-version = "0.1.0"
+version = "1.0.0"
 description = "Noah personal and work assistant"
 authors = ["Noah Assistant"]
 edition = "2021"
