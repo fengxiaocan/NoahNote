@@ -4,6 +4,18 @@ import type {
     AiRequest,
     AiResult,
     BackupInfo,
+    Bug,
+    BugComment,
+    BugDraft,
+    BugExport,
+    BugExportInput,
+    BugImportCommitInput,
+    BugImportPreview,
+    BugImportPreviewInput,
+    BugPage,
+    BugQuery,
+    BugRowResult,
+    BugStatusChange,
     Checklist,
     ChecklistItem,
     DocumentKind,
@@ -113,6 +125,8 @@ export interface TemplateInput {
   space: Exclude<Space, "all">;
 }
 
+export type BugDraftInput = BugDraft;
+
 const call = <T>(command: string, args?: Record<string, unknown>) => invoke<T>(command, args);
 
 export const api = {
@@ -131,6 +145,19 @@ export const api = {
   updateTask: (task: Task) => call<Task>("update_task", { task }),
   archiveTask: (id: string, archived: boolean) => call<Task>("archive_task", { id, archived }),
   deleteTask: (id: string) => call<TrashItem>("delete_task", { id }),
+  listBugs: (space: Space, query: BugQuery = {}) => call<BugPage<Bug>>("list_bugs", { space, query }),
+  getBug: (id: string) => call<Bug>("get_bug", { id }),
+  createBug: (input: BugDraftInput) => call<Bug>("create_bug", { input }),
+  updateBug: (bug: Bug, expectedRevision: number) => call<Bug>("update_bug", { bug, expectedRevision }),
+  changeBugStatus: (id: string, change: BugStatusChange) => call<Bug>("change_bug_status", { id, change }),
+  appendBugComment: (id: string, comment: BugComment) => call<Bug>("append_bug_comment", { id, comment }),
+  archiveBug: (id: string, archived: boolean) => call<Bug>("archive_bug", { id, archived }),
+  deleteBug: (id: string) => call<TrashItem>("delete_bug", { id }),
+  moveBugSpace: (id: string, space: Exclude<Space, "all">) => call<Bug>("move_bug_space", { id, space }),
+  previewBugImport: (input: BugImportPreviewInput) => call<BugImportPreview>("preview_bug_import", { input }),
+  importBugs: (input: BugImportCommitInput) => call<BugRowResult[]>("import_bugs", { input }),
+  prepareBugExport: (input: BugExportInput) => call<BugExport>("prepare_bug_export", { input }),
+  saveBugExport: (path: string, markdown: string) => call<string>("save_bug_export", { path, markdown }),
   listProjects: (space: Space, includeArchived = false) =>
     call<Project[]>("list_projects", { space, includeArchived }),
   createProject: (input: ProjectInput) => call<Project>("create_project", { input }),

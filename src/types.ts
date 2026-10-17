@@ -1,6 +1,6 @@
 export type Space = "all" | "personal" | "work";
 export type ContentSpace = Exclude<Space, "all">;
-export type PageId = "overview" | "inbox" | "sparks" | "today" | "tasks" | "notes" | "projects" | "schedule" | "checklists" | "templates" | "knowledge" | "documents" | "plugins" | "archive" | "trash" | "settings";
+export type PageId = "overview" | "inbox" | "sparks" | "today" | "tasks" | "bugs" | "notes" | "projects" | "schedule" | "checklists" | "templates" | "knowledge" | "documents" | "plugins" | "archive" | "trash" | "settings";
 export type TaskStatus = "todo" | "in_progress" | "waiting" | "done" | "cancelled";
 export type TaskPriority = "urgent" | "high" | "normal" | "low";
 export type SparkStage = "new" | "developing" | "converted";
@@ -138,6 +138,239 @@ export interface Task {
   revision: number;
 }
 
+export type BugStatus =
+  | "todo"
+  | "in_progress"
+  | "blocked"
+  | "pending_verification"
+  | "deferred"
+  | "done"
+  | "cancelled";
+
+export type BugPriority = "p0" | "p1" | "p2" | "p3";
+export type BugSeverity = "s0" | "s1" | "s2" | "s3";
+export type BugResolutionReason = "duplicate" | "not_bug" | "cannot_reproduce" | "wont_fix" | "other";
+export type BugActivityKind =
+  | "created"
+  | "imported"
+  | "updated"
+  | "status_changed"
+  | "comment_added"
+  | "reopened"
+  | "reactivated"
+  | "verification_failed";
+
+export interface BugResolution {
+  reason: BugResolutionReason;
+  note: string;
+  duplicateOfId: string | null;
+  duplicateCode: string | null;
+  duplicateTitle: string | null;
+}
+
+export interface BugActivity {
+  id: string;
+  kind: BugActivityKind;
+  occurredAt: string;
+  deviceId: string;
+  message: string;
+  changes: Array<{ field: string; before: unknown; after: unknown }>;
+}
+
+export interface BugSource {
+  kind: "manual" | "text_import" | "copy";
+  batchId: string | null;
+  rowId: string | null;
+  lineNumber: number | null;
+  copiedFromId: string | null;
+}
+
+export interface Bug {
+  schemaVersion: 1;
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  notes: string;
+  environment: string;
+  status: BugStatus;
+  priority: BugPriority;
+  severity: BugSeverity;
+  bugDate: string;
+  dueDate: string | null;
+  completedDate: string | null;
+  space: ContentSpace;
+  projectId: string | null;
+  module: string;
+  version: string;
+  assignee: string;
+  reporter: string;
+  tags: string[];
+  resolution: BugResolution | null;
+  reopenCount: number;
+  favorite: boolean;
+  archived: boolean;
+  activities: BugActivity[];
+  source: BugSource;
+  createdAt: string;
+  updatedAt: string;
+  deviceId: string;
+  workspaceId: string;
+  revision: number;
+}
+
+export type BugDraft = Pick<Bug, "title" | "space">
+  & Partial<Omit<Bug, "schemaVersion" | "id" | "code" | "title" | "space" | "activities" | "source" | "createdAt" | "updatedAt" | "deviceId" | "workspaceId" | "revision">>;
+
+export type BugSortField = "default" | "bug_date" | "due_date" | "completed_date" | "priority" | "severity" | "title" | "updated_at";
+
+export interface BugQuery {
+  search?: string;
+  statuses?: BugStatus[];
+  priority?: BugPriority | null;
+  severity?: BugSeverity | null;
+  projectId?: string | null;
+  module?: string | null;
+  version?: string | null;
+  assignee?: string | null;
+  tag?: string | null;
+  dateField?: "bug_date" | "due_date" | "completed_date" | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  includeArchived?: boolean;
+  sortBy?: BugSortField;
+  descending?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface BugStats {
+  total: number;
+  todo: number;
+  inProgress: number;
+  blocked: number;
+  pendingVerification: number;
+  deferred: number;
+  completed: number;
+  cancelled: number;
+  dueToday: number;
+  overdue: number;
+  favorite: number;
+  completionRate: number;
+}
+
+export interface BugPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  stats: BugStats;
+}
+
+export interface BugStatusChange {
+  status: BugStatus;
+  message: string;
+  completedDate?: string | null;
+  resolution?: BugResolution | null;
+  expectedRevision: number;
+}
+
+export interface BugComment {
+  message: string;
+  expectedRevision: number;
+}
+
+export interface BugRowResult {
+  rowId: string;
+  bugId: string | null;
+  bugCode: string | null;
+  success: boolean;
+  alreadyImported: boolean;
+  error: string | null;
+}
+
+export interface BugImportDefaults {
+  space: ContentSpace;
+  bugDate: string;
+  dueDate: string | null;
+  status: BugStatus;
+  priority: BugPriority;
+  severity: BugSeverity;
+  projectId: string | null;
+  module: string;
+  version: string;
+  assignee: string;
+  reporter: string;
+  tags: string[];
+  resolution: BugResolution | null;
+}
+
+export interface BugImportPreviewInput {
+  batchId: string;
+  text: string;
+  defaults: BugImportDefaults;
+  stripListPrefixes: boolean;
+  recognizeCheckboxes: boolean;
+}
+
+export interface BugImportPreviewRow {
+  rowId: string;
+  lineNumber: number;
+  raw: string;
+  draft: BugDraft | null;
+  warning: string | null;
+  error: string | null;
+  selected: boolean;
+}
+
+export interface BugImportPreview {
+  batchId: string;
+  rows: BugImportPreviewRow[];
+  sourceLineCount: number;
+  emptyLineCount: number;
+  duplicateLineCount: number;
+}
+
+export interface BugImportCommitInput {
+  batchId: string;
+  rows: Array<{ rowId: string; lineNumber: number; draft: BugDraft }>;
+}
+
+export interface BugBatchUpdate {
+  ids: Array<{ id: string; expectedRevision: number }>;
+  operation:
+    | { kind: "status"; status: BugStatus; message: string; completedDate?: string | null }
+    | { kind: "priority"; priority: BugPriority }
+    | { kind: "assignee"; assignee: string }
+    | { kind: "due_date"; dueDate: string | null }
+    | { kind: "archive"; archived: boolean }
+    | { kind: "tags"; mode: "add" | "remove" | "replace"; tags: string[] };
+}
+
+export interface BugExportInput {
+  space: Space;
+  query: BugQuery;
+  selectedIds: string[];
+  includeArchived: boolean;
+  format: "compact" | "full";
+  title: string;
+  groupByStatus: boolean;
+  includeDescription: boolean;
+  includeNotes: boolean;
+  includeActivities: boolean;
+}
+
+export interface BugExport {
+  exportId: string;
+  title: string;
+  fileName: string;
+  markdown: string;
+  generatedAt: string;
+  itemCount: number;
+  revisions: Record<string, number>;
+  stats: BugStats;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -233,7 +466,7 @@ export interface Template {
 
 export interface SearchResult {
   id: string;
-  kind: "note" | "task" | "project" | "inbox" | "event" | "checklist" | "knowledge_page" | "pdf";
+  kind: "note" | "task" | "bug" | "project" | "inbox" | "event" | "checklist" | "knowledge_page" | "pdf";
   title: string;
   snippet: string;
   space: ContentSpace;

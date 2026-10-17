@@ -6,12 +6,12 @@ use crate::{
     backup,
     error::{AppError, AppResult},
     models::{
-        AiRequest, AiResult, AppSettings, BackupInfo, Checklist, ChecklistInput, DocumentKind,
-        DocumentVersion, InboxInput, InboxItem, KnowledgeFolder, KnowledgeFolderInput,
-        KnowledgeNode, KnowledgePage, KnowledgePageInput, Note, NoteInput, PdfDocument,
-        PluginManifest, Project, ProjectInput, ScheduleEvent, ScheduleEventInput, SearchResult,
-        Space, SparkStage, SyncHistoryEntry, SyncReport, TagSummary, Task, TaskInput, Template,
-        TemplateInput, TrashItem, WikiLink,
+        AiRequest, AiResult, AppSettings, BackupInfo, Bug, BugComment, BugDraft, BugPage, BugQuery,
+        BugStatusChange, Checklist, ChecklistInput, DocumentKind, DocumentVersion, InboxInput,
+        InboxItem, KnowledgeFolder, KnowledgeFolderInput, KnowledgeNode, KnowledgePage,
+        KnowledgePageInput, Note, NoteInput, PdfDocument, PluginManifest, Project, ProjectInput,
+        ScheduleEvent, ScheduleEventInput, SearchResult, Space, SparkStage, SyncHistoryEntry,
+        SyncReport, TagSummary, Task, TaskInput, Template, TemplateInput, TrashItem, WikiLink,
     },
     sync, AppState,
 };
@@ -23,6 +23,99 @@ fn repository<'a>(
         .repository
         .lock()
         .map_err(|_| AppError::Command("Workspace 正在被其他操作占用".into()))
+}
+
+#[tauri::command]
+pub fn list_bugs(state: State<'_, AppState>, space: Space, query: BugQuery) -> AppResult<BugPage> {
+    repository(&state)?.list_bugs(space, query)
+}
+
+#[tauri::command]
+pub fn get_bug(state: State<'_, AppState>, id: String) -> AppResult<Bug> {
+    repository(&state)?.get_bug(&id)
+}
+
+#[tauri::command]
+pub fn create_bug(state: State<'_, AppState>, input: BugDraft) -> AppResult<Bug> {
+    repository(&state)?.create_bug(input)
+}
+
+#[tauri::command]
+pub fn update_bug(state: State<'_, AppState>, bug: Bug, expected_revision: i64) -> AppResult<Bug> {
+    repository(&state)?.update_bug(bug, expected_revision)
+}
+
+#[tauri::command]
+pub fn change_bug_status(
+    state: State<'_, AppState>,
+    id: String,
+    change: BugStatusChange,
+) -> AppResult<Bug> {
+    repository(&state)?.change_bug_status(&id, change)
+}
+
+#[tauri::command]
+pub fn append_bug_comment(
+    state: State<'_, AppState>,
+    id: String,
+    comment: BugComment,
+) -> AppResult<Bug> {
+    repository(&state)?.append_bug_comment(&id, comment)
+}
+
+#[tauri::command]
+pub fn archive_bug(state: State<'_, AppState>, id: String, archived: bool) -> AppResult<Bug> {
+    repository(&state)?.archive_bug(&id, archived)
+}
+
+#[tauri::command]
+pub fn delete_bug(state: State<'_, AppState>, id: String) -> AppResult<TrashItem> {
+    repository(&state)?.delete_bug(&id)
+}
+
+#[tauri::command]
+pub fn move_bug_space(state: State<'_, AppState>, id: String, space: Space) -> AppResult<Bug> {
+    repository(&state)?.move_bug_space(&id, space)
+}
+
+#[tauri::command]
+pub fn preview_bug_import(
+    state: State<'_, AppState>,
+    input: crate::bugs::import::BugImportPreviewInput,
+) -> AppResult<crate::bugs::import::BugImportPreview> {
+    repository(&state)?.preview_bug_import(input)
+}
+
+#[tauri::command]
+pub fn import_bugs(
+    state: State<'_, AppState>,
+    input: crate::bugs::import::BugImportCommitInput,
+) -> AppResult<Vec<crate::models::BugRowResult>> {
+    repository(&state)?.import_bugs(input)
+}
+
+#[tauri::command]
+pub fn prepare_bug_export(
+    state: State<'_, AppState>,
+    input: crate::bugs::export::BugExportInput,
+) -> AppResult<crate::bugs::export::BugExport> {
+    repository(&state)?.prepare_bug_export(input)
+}
+
+#[tauri::command]
+pub fn save_bug_export(path: String, markdown: String) -> AppResult<String> {
+    let target = Path::new(path.trim());
+    if target.as_os_str().is_empty() {
+        return Err(AppError::Validation("导出路径不能为空".into()));
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut file = std::fs::File::create(target)?;
+    use std::io::Write;
+    file.write_all(markdown.as_bytes())?;
+    file.sync_all()?;
+    Ok(target.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

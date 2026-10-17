@@ -1,6 +1,6 @@
 import { Button, DialogLayer, EmptyState, IconButton, SelectField, TextArea, TextField } from "../components/ui";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import type { ContentSpace, Project, Space, Task, Note } from "../types";
+import type { Bug, ContentSpace, Project, Space, Task, Note } from "../types";
 import { formatRelative, projectStatusLabel, parseTags, priorityLabel } from "../lib/format";
 import { PageHeader } from "../components/PageHeader";
 import { SpaceMoveButton } from "../components/SpaceMoveButton";
@@ -16,6 +16,7 @@ interface ProjectsPageProps {
   space: Space;
   projects: Project[];
   tasks: Task[];
+  bugs: Bug[];
   notes: Note[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -28,6 +29,7 @@ interface ProjectsPageProps {
   onToggleTask?: (task: Task) => void;
   onOpenTask?: (id: string) => void;
   onOpenNote?: (id: string) => void;
+  onOpenBugs?: (projectId: string) => void;
   onCreateTaskForProject?: (
     title: string,
     projectId: string,
@@ -44,6 +46,7 @@ export function ProjectsPage({
   space,
   projects,
   tasks,
+  bugs,
   notes,
   selectedId,
   onSelect,
@@ -56,6 +59,7 @@ export function ProjectsPage({
   onToggleTask,
   onOpenTask,
   onOpenNote,
+  onOpenBugs,
   onCreateTaskForProject,
   onCreateNoteForProject,
 }: ProjectsPageProps) {
@@ -338,6 +342,7 @@ export function ProjectsPage({
             ) : (
               filteredProjects.map((project) => {
                 const stats = calculateProjectTaskStats(tasks, project.id);
+                const projectBugs = bugs.filter((bug) => bug.projectId === project.id && !bug.archived);
                 const isSelected = project.id === selectedId;
                 return (
                   <div
@@ -415,6 +420,7 @@ export function ProjectsPage({
                       <span className="project-notes-count">
                         ▤ {notes.filter((n) => n.projectId === project.id).length} 篇笔记
                       </span>
+                      {onOpenBugs ? <button type="button" className="project-notes-count project-bugs-count" onClick={(event) => { event.stopPropagation(); onOpenBugs(project.id); }} title="查看项目关联 BUG">⌁ {projectBugs.length} 条 BUG</button> : <span className="project-notes-count">⌁ {projectBugs.length} 条 BUG</span>}
                     </div>
                   </div>
                 );
@@ -430,6 +436,7 @@ export function ProjectsPage({
               key={selected.id}
               project={selected}
               tasks={tasks}
+              bugs={bugs}
               notes={notes}
               onUpdate={onUpdate}
               onToggleFavorite={onToggleFavorite}
@@ -439,6 +446,7 @@ export function ProjectsPage({
               onToggleTask={onToggleTask}
               onOpenTask={onOpenTask}
               onOpenNote={onOpenNote}
+              onOpenBugs={onOpenBugs}
               onCreateTaskForProject={onCreateTaskForProject}
               onCreateNoteForProject={onCreateNoteForProject}
               onDirtyChange={setIsEditorDirty}
@@ -472,6 +480,7 @@ export function ProjectsPage({
 interface ProjectDetailProps {
   project: Project;
   tasks: Task[];
+  bugs: Bug[];
   notes: Note[];
   onUpdate: (project: Project) => void;
   onToggleFavorite?: (project: Project) => void;
@@ -481,6 +490,7 @@ interface ProjectDetailProps {
   onToggleTask?: (task: Task) => void;
   onOpenTask?: (id: string) => void;
   onOpenNote?: (id: string) => void;
+  onOpenBugs?: (projectId: string) => void;
   onCreateTaskForProject?: (
     title: string,
     projectId: string,
@@ -498,6 +508,7 @@ interface ProjectDetailProps {
 function ProjectDetail({
   project,
   tasks,
+  bugs,
   notes,
   onUpdate,
   onToggleFavorite,
@@ -507,6 +518,7 @@ function ProjectDetail({
   onToggleTask,
   onOpenTask,
   onOpenNote,
+  onOpenBugs,
   onCreateTaskForProject,
   onCreateNoteForProject,
   onDirtyChange,
@@ -579,6 +591,7 @@ function ProjectDetail({
   };
 
   const projectTasks = tasks.filter((task) => task.projectId === project.id);
+  const projectBugs = bugs.filter((bug) => bug.projectId === project.id && !bug.archived);
   const projectNotes = notes.filter((note) => note.projectId === project.id);
   const taskStats = calculateProjectTaskStats(tasks, project.id);
 
@@ -858,6 +871,17 @@ function ProjectDetail({
       )}
 
       {/* Associated Tasks Section */}
+      <div className="detail-section project-bug-summary">
+        <div className="detail-section-heading">
+          <div className="detail-section-title-wrap">
+            <strong>关联 BUG</strong>
+            <span className="task-stats-badge">{projectBugs.filter((bug) => bug.status === "done").length}/{projectBugs.length}</span>
+          </div>
+          {onOpenBugs ? <Button size="small" variant="secondary" onClick={() => onOpenBugs(project.id)}>查看 BUG 列表 →</Button> : null}
+        </div>
+        <p>已完成 {projectBugs.filter((bug) => bug.status === "done").length} 条 · 处理中 {projectBugs.filter((bug) => ["todo", "in_progress", "blocked", "pending_verification", "deferred"].includes(bug.status)).length} 条 · 已取消 {projectBugs.filter((bug) => bug.status === "cancelled").length} 条</p>
+      </div>
+
       <div className="detail-section">
         <div className="detail-section-heading">
           <div className="detail-section-title-wrap">

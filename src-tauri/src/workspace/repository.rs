@@ -4,21 +4,24 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{Duration, NaiveTime, Utc};
+use chrono::{Duration, Local, NaiveDate, NaiveTime, Utc};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::{
-    ai,
+    ai, bugs,
     error::{AppError, AppResult},
     models::{
-        AiRequest, AiResult, AppSettings, Checklist, ChecklistInput, ChecklistItem, DocumentKind,
-        DocumentVersion, InboxInput, InboxItem, InboxKind, KnowledgeFolder, KnowledgeFolderInput,
-        KnowledgeNode, KnowledgeNodeKind, KnowledgePage, KnowledgePageInput, Note, NoteInput,
-        PdfDocument, PdfOcrStatus, PluginManifest, Project, ProjectInput, ScheduleEvent,
-        ScheduleEventInput, SearchResult, Space, SparkStage, TagSummary, Task, TaskInput,
-        TaskPriority, TaskStatus, Template, TemplateInput, TemplateKind, TrashItem, WikiLink,
+        AiRequest, AiResult, AppSettings, Bug, BugActivity, BugActivityKind, BugComment, BugDraft,
+        BugFieldChange, BugPage, BugPriority, BugQuery, BugResolutionReason, BugSeverity,
+        BugSource, BugSourceKind, BugStats, BugStatus, BugStatusChange, Checklist, ChecklistInput,
+        ChecklistItem, DocumentKind, DocumentVersion, InboxInput, InboxItem, InboxKind,
+        KnowledgeFolder, KnowledgeFolderInput, KnowledgeNode, KnowledgeNodeKind, KnowledgePage,
+        KnowledgePageInput, Note, NoteInput, PdfDocument, PdfOcrStatus, PluginManifest, Project,
+        ProjectInput, ScheduleEvent, ScheduleEventInput, SearchResult, Space, SparkStage,
+        TagSummary, Task, TaskInput, TaskPriority, TaskStatus, Template, TemplateInput,
+        TemplateKind, TrashItem, WikiLink,
     },
     pdf, plugins, semantic,
     storage::Database,
@@ -112,6 +115,8 @@ impl WorkspaceRepository {
             database,
             settings,
         };
+        bugs::recover_bug_writes(&repository.root)?;
+        bugs::recover_bug_moves(&repository.root)?;
         repository.reindex_files()?;
         repository.purge_expired_trash()?;
         Ok(repository)
@@ -140,6 +145,443 @@ impl WorkspaceRepository {
     }
     pub fn list_tasks(&self, space: Space, include_archived: bool) -> AppResult<Vec<Task>> {
         self.database.list_tasks(&space, include_archived)
+    }
+    pub fn list_bugs(&self, space: Space, query: BugQuery) -> AppResult<BugPage> {
+        let today = bugs::today();
+        if query.page_size > 500 {
+            return Err(AppError::Validation("每页最多显示 500 条 BUG".into()));
+        }
+        if let Some(field) = query.date_field.as_deref() {
+            if !matches!(field, "bug_date" | "due_date" | "completed_date") {
+                return Err(AppError::Validation("日期筛选字段无效".into()));
+            }
+        }
+        for date in [&query.date_from, &query.date_to].into_iter().flatten() {
+            bugs::valid_date(date)?;
+        }
+        if let (Some(from), Some(to)) = (query.date_from.as_deref(), query.date_to.as_deref()) {
+            if from > to {
+                return Err(AppError::Validation(
+                    "日期筛选起始日期不能晚于结束日期".into(),
+                ));
+            }
+        }
+
+        let all = self.database.list_bugs(&space, true)?;
+        let base = filter_bugs(&all, &query, &today, true);
+        let filtered = filter_bugs(&all, &query, &today, false);
+        let stats = bug_stats(&base, &today);
+        let total = filtered.len();
+        let page = query.page.max(1);
+        let page_size = if query.page_size == 0 {
+            100
+        } else {
+            query.page_size
+        };
+        let start = (page - 1).saturating_mul(page_size).min(total);
+        let items = filtered.into_iter().skip(start).take(page_size).collect();
+        Ok(BugPage {
+            items,
+            total,
+            page,
+            page_size,
+            stats,
+        })
+    }
+
+    pub fn get_bug(&self, id: &str) -> AppResult<Bug> {
+        self.database.get_bug(id)
+    }
+
+    pub fn preview_bug_import(
+        &self,
+        input: bugs::import::BugImportPreviewInput,
+    ) -> AppResult<bugs::import::BugImportPreview> {
+        let mut preview = bugs::import::parse_preview(&input)?;
+        let existing = self.database.list_bugs(&input.defaults.space, true)?;
+        for row in &mut preview.rows {
+            let Some(draft) = row.draft.as_ref() else {
+                continue;
+            };
+            let key = draft.title.trim().to_lowercase();
+            if let Some(bug) = existing
+                .iter()
+                .find(|bug| bug.title.trim().to_lowercase() == key)
+            {
+                let notice = format!("同空间已有 {}：{}", bug.code, bug.title);
+                row.warning = Some(match row.warning.take() {
+                    Some(warning) => format!("{warning}；{notice}"),
+                    None => notice,
+                });
+            }
+        }
+        Ok(preview)
+    }
+
+    pub fn import_bugs(
+        &mut self,
+        input: bugs::import::BugImportCommitInput,
+    ) -> AppResult<Vec<crate::models::BugRowResult>> {
+        if input.rows.len() > 2_000 {
+            return Err(AppError::Validation("单次最多导入 2,000 条 BUG".into()));
+        }
+        let mut results = Vec::with_capacity(input.rows.len());
+        let mut seen_rows = BTreeSet::new();
+        for chunk in input.rows.chunks(50) {
+            for row in chunk {
+                if row.row_id.trim().is_empty() || !seen_rows.insert(row.row_id.clone()) {
+                    results.push(crate::models::BugRowResult {
+                        row_id: row.row_id.clone(),
+                        bug_id: None,
+                        bug_code: None,
+                        success: false,
+                        already_imported: false,
+                        error: Some("导入行编号缺失或重复".into()),
+                    });
+                    continue;
+                }
+                if let Some(existing) = self
+                    .database
+                    .find_imported_bug(&input.batch_id, &row.row_id)?
+                {
+                    results.push(crate::models::BugRowResult {
+                        row_id: row.row_id.clone(),
+                        bug_id: Some(existing.id),
+                        bug_code: Some(existing.code),
+                        success: true,
+                        already_imported: true,
+                        error: None,
+                    });
+                    continue;
+                }
+                if let Some(trashed) = self
+                    .database
+                    .find_imported_bug_in_trash(&input.batch_id, &row.row_id)?
+                {
+                    results.push(crate::models::BugRowResult {
+                        row_id: row.row_id.clone(),
+                        bug_id: Some(trashed.id),
+                        bug_code: Some(trashed.code),
+                        success: true,
+                        already_imported: true,
+                        error: None,
+                    });
+                    continue;
+                }
+                let mut draft = row.draft.clone();
+                let line = row.line_number;
+                draft.source = Some(BugSource {
+                    kind: BugSourceKind::TextImport,
+                    batch_id: Some(input.batch_id.clone()),
+                    row_id: Some(row.row_id.clone()),
+                    line_number: Some(line),
+                    copied_from_id: None,
+                });
+                match self.create_bug(draft) {
+                    Ok(bug) => results.push(crate::models::BugRowResult {
+                        row_id: row.row_id.clone(),
+                        bug_id: Some(bug.id),
+                        bug_code: Some(bug.code),
+                        success: true,
+                        already_imported: false,
+                        error: None,
+                    }),
+                    Err(error) => results.push(crate::models::BugRowResult {
+                        row_id: row.row_id.clone(),
+                        bug_id: None,
+                        bug_code: None,
+                        success: false,
+                        already_imported: false,
+                        error: Some(error.to_string()),
+                    }),
+                }
+            }
+        }
+        Ok(results)
+    }
+
+    pub fn prepare_bug_export(
+        &self,
+        input: bugs::export::BugExportInput,
+    ) -> AppResult<bugs::export::BugExport> {
+        if !matches!(input.format.as_str(), "compact" | "full") {
+            return Err(AppError::Validation("Markdown 导出格式无效".into()));
+        }
+        let mut query = input.query.clone();
+        query.include_archived = input.include_archived;
+        let all = self
+            .database
+            .list_bugs(&input.space, input.include_archived)?;
+        let mut selected = filter_bugs(&all, &query, &bugs::today(), false);
+        if !input.selected_ids.is_empty() {
+            let ids = input.selected_ids.iter().collect::<BTreeSet<_>>();
+            selected.retain(|bug| ids.contains(&&bug.id));
+        }
+        Ok(bugs::export::render_export(&input, selected))
+    }
+
+    pub fn create_bug(&mut self, input: BugDraft) -> AppResult<Bug> {
+        validate_space(&input.space)?;
+        let current_time = now();
+        let status = input.status.clone().unwrap_or_default();
+        let source = input.source.unwrap_or(BugSource {
+            kind: BugSourceKind::Manual,
+            batch_id: None,
+            row_id: None,
+            line_number: None,
+            copied_from_id: None,
+        });
+        if source.batch_id.is_some() != source.row_id.is_some() {
+            return Err(AppError::Validation(
+                "BUG 导入来源必须同时包含批次 ID 和行 ID".into(),
+            ));
+        }
+        let mut bug = Bug {
+            schema_version: 1,
+            id: new_id(),
+            code: String::new(),
+            title: required_title(&input.title)?,
+            description: input.description,
+            notes: input.notes,
+            environment: input.environment,
+            status: status.clone(),
+            priority: input.priority.unwrap_or_default(),
+            severity: input.severity.unwrap_or_default(),
+            bug_date: input
+                .bug_date
+                .unwrap_or_else(|| Local::now().date_naive().format("%Y-%m-%d").to_string()),
+            due_date: normalize_date(input.due_date)?,
+            completed_date: normalize_date(input.completed_date)?,
+            space: input.space,
+            project_id: input.project_id,
+            module: input.module,
+            version: input.version,
+            assignee: input.assignee,
+            reporter: input.reporter,
+            tags: normalized_tags(input.tags),
+            resolution: input.resolution,
+            reopen_count: 0,
+            favorite: false,
+            archived: false,
+            activities: Vec::new(),
+            source,
+            created_at: current_time.clone(),
+            updated_at: current_time.clone(),
+            device_id: self.settings.device_id.clone(),
+            workspace_id: WORKSPACE_ID.into(),
+            revision: 1,
+        };
+        bug.code = self.available_bug_code(&bug.id)?;
+        if status == BugStatus::Done && bug.completed_date.is_none() {
+            bug.completed_date = Some(Local::now().date_naive().format("%Y-%m-%d").to_string());
+        }
+        self.validate_bug_references(&bug)?;
+        bugs::validate_bug(&bug, bugs::today())?;
+        bug.activities.push(BugActivity {
+            id: new_id(),
+            kind: if bug.source.kind == BugSourceKind::TextImport {
+                BugActivityKind::Imported
+            } else {
+                BugActivityKind::Created
+            },
+            occurred_at: current_time,
+            device_id: bug.device_id.clone(),
+            message: if bug.source.kind == BugSourceKind::TextImport {
+                format!(
+                    "通过文本导入（第 {} 行）",
+                    bug.source.line_number.unwrap_or(0)
+                )
+            } else {
+                "创建 BUG".into()
+            },
+            changes: Vec::new(),
+        });
+        self.persist_bug(&bug)?;
+        Ok(bug)
+    }
+
+    pub fn update_bug(&mut self, mut incoming: Bug, expected_revision: i64) -> AppResult<Bug> {
+        let current = self.database.get_bug(&incoming.id)?;
+        ensure_bug_revision(&current, expected_revision)?;
+        if incoming.status != current.status
+            || (incoming.completed_date != current.completed_date
+                && current.status != BugStatus::Done)
+            || incoming.archived != current.archived
+            || incoming
+                .resolution
+                .as_ref()
+                .map(|item| (&item.reason, &item.note, &item.duplicate_of_id))
+                != current
+                    .resolution
+                    .as_ref()
+                    .map(|item| (&item.reason, &item.note, &item.duplicate_of_id))
+        {
+            return Err(AppError::Validation(
+                "请使用 BUG 状态或归档操作修改状态、取消原因和归档状态".into(),
+            ));
+        }
+        incoming.title = required_title(&incoming.title)?;
+        incoming.space = current.space.clone();
+        incoming.source = current.source.clone();
+        incoming.created_at = current.created_at.clone();
+        incoming.activities = current.activities.clone();
+        incoming.code = current.code.clone();
+        incoming.reopen_count = current.reopen_count;
+        incoming.schema_version = 1;
+        incoming.updated_at = now();
+        incoming.revision = current.revision + 1;
+        incoming.device_id = self.settings.device_id.clone();
+        incoming.workspace_id = current.workspace_id.clone();
+        self.validate_bug_references(&incoming)?;
+        bugs::validate_bug(&incoming, bugs::today())?;
+        incoming.activities.push(BugActivity {
+            id: new_id(),
+            kind: BugActivityKind::Updated,
+            occurred_at: incoming.updated_at.clone(),
+            device_id: incoming.device_id.clone(),
+            message: "更新 BUG 信息".into(),
+            changes: bug_field_changes(&current, &incoming)?,
+        });
+        self.persist_bug(&incoming)?;
+        Ok(incoming)
+    }
+
+    pub fn change_bug_status(&mut self, id: &str, change: BugStatusChange) -> AppResult<Bug> {
+        let current = self.database.get_bug(id)?;
+        ensure_bug_revision(&current, change.expected_revision)?;
+        let mut updated = bugs::transition_bug(&current, &change, &now(), bugs::today())?;
+        self.validate_bug_references(&updated)?;
+        updated.device_id = self.settings.device_id.clone();
+        self.persist_bug(&updated)?;
+        Ok(updated)
+    }
+
+    pub fn append_bug_comment(&mut self, id: &str, comment: BugComment) -> AppResult<Bug> {
+        let mut bug = self.database.get_bug(id)?;
+        ensure_bug_revision(&bug, comment.expected_revision)?;
+        let message = comment.message.trim();
+        if message.is_empty() || message.chars().count() > 10_000 {
+            return Err(AppError::Validation(
+                "处理记录必须填写，且不能超过 10,000 个字符".into(),
+            ));
+        }
+        let current_time = now();
+        bug.activities.push(BugActivity {
+            id: new_id(),
+            kind: BugActivityKind::CommentAdded,
+            occurred_at: current_time.clone(),
+            device_id: self.settings.device_id.clone(),
+            message: message.into(),
+            changes: Vec::new(),
+        });
+        bug.updated_at = current_time;
+        bug.revision += 1;
+        bug.device_id = self.settings.device_id.clone();
+        self.persist_bug(&bug)?;
+        Ok(bug)
+    }
+
+    pub fn archive_bug(&mut self, id: &str, archived: bool) -> AppResult<Bug> {
+        let mut bug = self.database.get_bug(id)?;
+        if bug.archived == archived {
+            return Ok(bug);
+        }
+        let current_time = now();
+        bug.activities.push(BugActivity {
+            id: new_id(),
+            kind: BugActivityKind::Updated,
+            occurred_at: current_time.clone(),
+            device_id: self.settings.device_id.clone(),
+            message: if archived {
+                "归档 BUG".into()
+            } else {
+                "恢复 BUG".into()
+            },
+            changes: Vec::new(),
+        });
+        bug.archived = archived;
+        bug.updated_at = current_time;
+        bug.revision += 1;
+        bug.device_id = self.settings.device_id.clone();
+        self.persist_bug(&bug)?;
+        Ok(bug)
+    }
+
+    pub fn delete_bug(&mut self, id: &str) -> AppResult<TrashItem> {
+        let bug = self.database.get_bug(id)?;
+        self.ensure_bug_not_referenced(&bug)?;
+        let item = self.trash_payload(
+            "bug",
+            &bug.id,
+            &bug.title,
+            &bug.space,
+            "bugs",
+            serde_json::to_value(&bug)?,
+        )?;
+        self.remove_json_entity("bugs", &bug.space, &bug.id)?;
+        self.database.delete_bug(&bug.id)?;
+        Ok(item)
+    }
+
+    pub fn move_bug_space(&mut self, id: &str, space: Space) -> AppResult<Bug> {
+        validate_space(&space)?;
+        bugs::recover_bug_moves(&self.root)?;
+        let original_bug = self.database.get_bug(id)?;
+        let mut bug = original_bug.clone();
+        if bug.space == space {
+            return Ok(bug);
+        }
+        self.ensure_bug_not_referenced(&bug)?;
+        if bug
+            .resolution
+            .as_ref()
+            .is_some_and(|resolution| resolution.duplicate_of_id.is_some())
+        {
+            return Err(AppError::Validation(
+                "请先处理重复 BUG 关联，再移动到其他空间".into(),
+            ));
+        }
+        let old_space = bug.space.clone();
+        if let Some(project_id) = bug.project_id.as_deref() {
+            bug.project_id = self
+                .database
+                .get_project(project_id)
+                .ok()
+                .filter(|project| project.space == space)
+                .map(|project| project.id);
+        }
+        let current_time = now();
+        bug.activities.push(BugActivity {
+            id: new_id(),
+            kind: BugActivityKind::Updated,
+            occurred_at: current_time.clone(),
+            device_id: self.settings.device_id.clone(),
+            message: format!("从{}空间移至{}空间", old_space.as_str(), space.as_str()),
+            changes: vec![BugFieldChange {
+                field: "space".into(),
+                before: serde_json::to_value(&old_space)?,
+                after: serde_json::to_value(&space)?,
+            }],
+        });
+        bug.space = space;
+        bug.updated_at = current_time;
+        bug.revision += 1;
+        bug.device_id = self.settings.device_id.clone();
+        self.validate_bug_references(&bug)?;
+        bugs::begin_bug_move(&self.root, &bug.id, &old_space, &bug.space)?;
+        if let Err(error) = bugs::write_bug_json_recoverable(&self.root, &bug) {
+            let _ = bugs::finish_bug_move(&self.root, &bug.id);
+            return Err(error);
+        }
+        if let Err(error) = self.database.upsert_bug(&bug) {
+            let _ = self.remove_json_entity("bugs", &bug.space, &bug.id);
+            let _ = self.database.upsert_bug(&original_bug);
+            let _ = bugs::finish_bug_move(&self.root, &bug.id);
+            return Err(error);
+        }
+        self.remove_json_entity("bugs", &old_space, &bug.id)?;
+        bugs::finish_bug_move(&self.root, &bug.id)?;
+        Ok(bug)
     }
     pub fn list_projects(&self, space: Space, include_archived: bool) -> AppResult<Vec<Project>> {
         self.database.list_projects(&space, include_archived)
@@ -288,7 +730,11 @@ impl WorkspaceRepository {
         let previous_pdf = self.pdf_path(&previous);
         let previous_metadata = self.pdf_metadata_path(&previous);
         document.space = space;
-        document.relative_path = format!("{}/documents/pdfs/{}.pdf", document.space.as_str(), document.id);
+        document.relative_path = format!(
+            "{}/documents/pdfs/{}.pdf",
+            document.space.as_str(),
+            document.id
+        );
         document.updated_at = now();
         document.revision += 1;
         document.device_id = self.settings.device_id.clone();
@@ -661,7 +1107,9 @@ impl WorkspaceRepository {
             )
         {
             if !titles.insert(title.1.to_string()) {
-                return Err(AppError::Validation("知识库目录中存在重复名称，无法移动".into()));
+                return Err(AppError::Validation(
+                    "知识库目录中存在重复名称，无法移动".into(),
+                ));
             }
             self.ensure_knowledge_title_available(&space, title.1, Some(title.0))?;
         }
@@ -1325,6 +1773,13 @@ impl WorkspaceRepository {
                 self.index_task_semantics(&task)?;
                 serde_json::to_value(task)?
             }
+            "bug" => {
+                let bug: Bug = serde_json::from_value(payload)?;
+                bugs::validate_bug(&bug, bugs::today())?;
+                self.validate_bug_references(&bug)?;
+                self.persist_bug(&bug)?;
+                serde_json::to_value(bug)?
+            }
             "project" => {
                 let project: Project = serde_json::from_value(payload)?;
                 self.persist_json_entity("projects", &project)?;
@@ -1556,6 +2011,8 @@ impl WorkspaceRepository {
         &self.database
     }
     pub fn reindex(&self) -> AppResult<()> {
+        bugs::recover_bug_writes(&self.root)?;
+        bugs::recover_bug_moves(&self.root)?;
         self.reindex_files()
     }
     pub fn reload_settings(&mut self) -> AppResult<()> {
@@ -1574,6 +2031,9 @@ impl WorkspaceRepository {
             self.reindex_notes(&space)?;
             self.reindex_json_entities::<Task, _>(&space, "tasks", |database, task| {
                 database.upsert_task(task)
+            })?;
+            self.reindex_json_entities::<Bug, _>(&space, "bugs", |database, bug| {
+                database.upsert_bug(bug)
             })?;
             self.reindex_json_entities::<Project, _>(&space, "projects", |database, project| {
                 database.upsert_project(project)
@@ -2309,6 +2769,91 @@ impl WorkspaceRepository {
         )
     }
 
+    fn persist_bug(&mut self, bug: &Bug) -> AppResult<()> {
+        bugs::write_bug_json_recoverable(&self.root, bug)?;
+        self.database.upsert_bug(bug)
+    }
+
+    fn available_bug_code(&self, id: &str) -> AppResult<String> {
+        let compact = id.replace('-', "").to_ascii_uppercase();
+        if compact.len() < 12 {
+            return Err(AppError::Validation("BUG 内部编号长度不足".into()));
+        }
+        for length in (12..=compact.len()).step_by(2) {
+            let code = format!("BUG-{}", &compact[..length]);
+            if !self.database.code_exists(&code)? {
+                return Ok(code);
+            }
+        }
+        let code = format!("BUG-{compact}");
+        if !self.database.code_exists(&code)? {
+            return Ok(code);
+        }
+        Err(AppError::Validation("无法为 BUG 生成唯一展示编号".into()))
+    }
+
+    fn validate_bug_references(&self, bug: &Bug) -> AppResult<()> {
+        if let Some(project_id) = bug.project_id.as_deref() {
+            let project = self.database.get_project(project_id)?;
+            if project.space != bug.space {
+                return Err(AppError::Validation("BUG 只能关联同一空间的项目".into()));
+            }
+        }
+        let Some(resolution) = bug.resolution.as_ref() else {
+            return Ok(());
+        };
+        if resolution.reason != BugResolutionReason::Duplicate {
+            return Ok(());
+        }
+        let mut next = resolution
+            .duplicate_of_id
+            .clone()
+            .ok_or_else(|| AppError::Validation("重复 BUG 必须关联原 BUG".into()))?;
+        let mut visited = BTreeSet::new();
+        loop {
+            if next == bug.id || !visited.insert(next.clone()) {
+                return Err(AppError::Validation(
+                    "重复 BUG 关联不能指向自身或形成循环".into(),
+                ));
+            }
+            let target = self.database.get_bug(&next)?;
+            if target.space != bug.space {
+                return Err(AppError::Validation(
+                    "重复 BUG 必须关联同一空间的 BUG".into(),
+                ));
+            }
+            match target
+                .resolution
+                .as_ref()
+                .filter(|entry| entry.reason == BugResolutionReason::Duplicate)
+                .and_then(|entry| entry.duplicate_of_id.clone())
+            {
+                Some(id) => next = id,
+                None => break,
+            }
+        }
+        Ok(())
+    }
+
+    fn ensure_bug_not_referenced(&self, bug: &Bug) -> AppResult<()> {
+        let references = self
+            .database
+            .list_bugs(&bug.space, true)?
+            .into_iter()
+            .any(|candidate| {
+                candidate.id != bug.id
+                    && candidate.resolution.as_ref().is_some_and(|resolution| {
+                        resolution.duplicate_of_id.as_deref() == Some(bug.id.as_str())
+                    })
+            });
+        if references {
+            return Err(AppError::Validation(
+                "此 BUG 正被其他重复记录引用；请先解除关联后再移动或删除".into(),
+            ));
+        }
+        Ok(())
+    }
+
     fn space_dir(&self, space: &Space) -> PathBuf {
         self.root.join(match space {
             Space::Personal => "personal",
@@ -2327,6 +2872,7 @@ fn create_workspace_dirs(root: &Path) -> AppResult<()> {
         for folder in [
             "notes",
             "tasks",
+            "bugs",
             "projects",
             "inbox",
             "events",
@@ -2505,6 +3051,283 @@ fn normalized_tags(tags: Vec<String>) -> Vec<String> {
         }
     }
     result.into_iter().collect()
+}
+
+fn ensure_bug_revision(current: &Bug, expected_revision: i64) -> AppResult<()> {
+    if current.revision != expected_revision {
+        return Err(AppError::Command(format!(
+            "BUG {} 已在其他窗口中修改（预期版本 {}，当前版本 {}），请重新载入后再保存",
+            current.code, expected_revision, current.revision
+        )));
+    }
+    Ok(())
+}
+
+fn bug_field_changes(before: &Bug, after: &Bug) -> AppResult<Vec<BugFieldChange>> {
+    let before = serde_json::to_value(before)?;
+    let after = serde_json::to_value(after)?;
+    let before = before
+        .as_object()
+        .ok_or_else(|| AppError::Command("BUG 数据结构无效".into()))?;
+    let after = after
+        .as_object()
+        .ok_or_else(|| AppError::Command("BUG 数据结构无效".into()))?;
+    Ok(before
+        .iter()
+        .filter_map(|(field, old_value)| {
+            if matches!(
+                field.as_str(),
+                "id" | "code"
+                    | "activities"
+                    | "source"
+                    | "space"
+                    | "createdAt"
+                    | "updatedAt"
+                    | "deviceId"
+                    | "workspaceId"
+                    | "revision"
+            ) {
+                return None;
+            }
+            let new_value = after.get(field)?;
+            (old_value != new_value).then(|| BugFieldChange {
+                field: field.clone(),
+                before: old_value.clone(),
+                after: new_value.clone(),
+            })
+        })
+        .collect())
+}
+
+fn filter_bugs(bugs: &[Bug], query: &BugQuery, today: &NaiveDate, ignore_status: bool) -> Vec<Bug> {
+    let today = today.format("%Y-%m-%d").to_string();
+    let search = query.search.trim().to_lowercase();
+    let mut result = bugs
+        .iter()
+        .filter(|bug| {
+            (query.include_archived || !bug.archived)
+                && (ignore_status
+                    || query.statuses.is_empty()
+                    || query.statuses.contains(&bug.status))
+                && query
+                    .priority
+                    .as_ref()
+                    .map_or(true, |priority| priority == &bug.priority)
+                && query
+                    .severity
+                    .as_ref()
+                    .map_or(true, |severity| severity == &bug.severity)
+                && query.project_id.as_ref().map_or(true, |project| {
+                    if project == "none" {
+                        bug.project_id.is_none()
+                    } else {
+                        Some(project) == bug.project_id.as_ref()
+                    }
+                })
+                && query.module.as_ref().map_or(true, |value| {
+                    bug.module.to_lowercase().contains(&value.to_lowercase())
+                })
+                && query.version.as_ref().map_or(true, |value| {
+                    bug.version.to_lowercase().contains(&value.to_lowercase())
+                })
+                && query.assignee.as_ref().map_or(true, |value| {
+                    bug.assignee.to_lowercase().contains(&value.to_lowercase())
+                })
+                && query.tag.as_ref().map_or(true, |tag| {
+                    bug.tags.iter().any(|value| value.eq_ignore_ascii_case(tag))
+                })
+                && (search.is_empty() || {
+                    let searchable = format!(
+                        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+                        bug.code,
+                        bug.title,
+                        bug.description,
+                        bug.notes,
+                        bug.environment,
+                        bug.module,
+                        bug.version,
+                        bug.assignee,
+                        bug.reporter,
+                        bug.activities
+                            .iter()
+                            .map(|activity| activity.message.as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    );
+                    searchable.to_lowercase().contains(&search)
+                        || bug
+                            .tags
+                            .iter()
+                            .any(|tag| tag.to_lowercase().contains(&search))
+                })
+                && query.date_field.as_deref().map_or(true, |field| {
+                    if query.date_from.is_none() && query.date_to.is_none() {
+                        return true;
+                    }
+                    let value = match field {
+                        "bug_date" => Some(bug.bug_date.as_str()),
+                        "due_date" => bug.due_date.as_deref(),
+                        "completed_date" => bug.completed_date.as_deref(),
+                        _ => None,
+                    };
+                    value.map_or(false, |date| {
+                        query.date_from.as_deref().map_or(true, |from| date >= from)
+                            && query.date_to.as_deref().map_or(true, |to| date <= to)
+                    })
+                })
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    result.sort_by(|left, right| {
+        let order = match query.sort_by.as_deref().unwrap_or("default") {
+            "bug_date" => compare_optional_date(
+                Some(&left.bug_date),
+                Some(&right.bug_date),
+                query.descending,
+            ),
+            "due_date" => compare_optional_date(
+                left.due_date.as_deref(),
+                right.due_date.as_deref(),
+                query.descending,
+            ),
+            "completed_date" => compare_optional_date(
+                left.completed_date.as_deref(),
+                right.completed_date.as_deref(),
+                query.descending,
+            ),
+            "priority" => compare_rank(
+                priority_rank(&left.priority),
+                priority_rank(&right.priority),
+                query.descending,
+            ),
+            "severity" => compare_rank(
+                severity_rank(&left.severity),
+                severity_rank(&right.severity),
+                query.descending,
+            ),
+            "title" => {
+                let value = left.title.to_lowercase().cmp(&right.title.to_lowercase());
+                if query.descending {
+                    value.reverse()
+                } else {
+                    value
+                }
+            }
+            "updated_at" => {
+                let value = right.updated_at.cmp(&left.updated_at);
+                if query.descending {
+                    value.reverse()
+                } else {
+                    value
+                }
+            }
+            _ => left
+                .status
+                .is_terminal()
+                .cmp(&right.status.is_terminal())
+                .then_with(|| is_overdue(right, &today).cmp(&is_overdue(left, &today)))
+                .then_with(|| priority_rank(&left.priority).cmp(&priority_rank(&right.priority)))
+                .then_with(|| {
+                    compare_optional_date(
+                        left.due_date.as_deref(),
+                        right.due_date.as_deref(),
+                        false,
+                    )
+                })
+                .then_with(|| right.bug_date.cmp(&left.bug_date)),
+        };
+        order.then_with(|| left.id.cmp(&right.id))
+    });
+    result
+}
+
+fn bug_stats(bugs: &[Bug], today: &NaiveDate) -> BugStats {
+    let mut stats = BugStats {
+        total: bugs.len(),
+        ..BugStats::default()
+    };
+    let today = today.format("%Y-%m-%d").to_string();
+    for bug in bugs {
+        match bug.status {
+            BugStatus::Todo => stats.todo += 1,
+            BugStatus::InProgress => stats.in_progress += 1,
+            BugStatus::Blocked => stats.blocked += 1,
+            BugStatus::PendingVerification => stats.pending_verification += 1,
+            BugStatus::Deferred => stats.deferred += 1,
+            BugStatus::Done => stats.completed += 1,
+            BugStatus::Cancelled => stats.cancelled += 1,
+        }
+        if bug.favorite {
+            stats.favorite += 1;
+        }
+        if !bug.status.is_terminal() {
+            if bug.due_date.as_deref() == Some(today.as_str()) {
+                stats.due_today += 1;
+            }
+            if bug
+                .due_date
+                .as_deref()
+                .map_or(false, |date| date < today.as_str())
+            {
+                stats.overdue += 1;
+            }
+        }
+    }
+    let denominator = stats.total.saturating_sub(stats.cancelled);
+    if denominator > 0 {
+        stats.completion_rate = (stats.completed * 100 + denominator / 2) / denominator;
+    }
+    stats
+}
+
+fn is_overdue(bug: &Bug, today: &str) -> bool {
+    !bug.status.is_terminal() && bug.due_date.as_deref().map_or(false, |date| date < today)
+}
+
+fn compare_optional_date(
+    left: Option<&str>,
+    right: Option<&str>,
+    descending: bool,
+) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let order = match (left, right) {
+        (None, None) => Ordering::Equal,
+        (None, Some(_)) => Ordering::Greater,
+        (Some(_), None) => Ordering::Less,
+        (Some(left), Some(right)) => left.cmp(right),
+    };
+    if descending && left.is_some() && right.is_some() {
+        order.reverse()
+    } else {
+        order
+    }
+}
+
+fn compare_rank(left: u8, right: u8, descending: bool) -> std::cmp::Ordering {
+    let order = left.cmp(&right);
+    if descending {
+        order.reverse()
+    } else {
+        order
+    }
+}
+
+fn priority_rank(priority: &BugPriority) -> u8 {
+    match priority {
+        BugPriority::P0 => 0,
+        BugPriority::P1 => 1,
+        BugPriority::P2 => 2,
+        BugPriority::P3 => 3,
+    }
+}
+
+fn severity_rank(severity: &BugSeverity) -> u8 {
+    match severity {
+        BugSeverity::S0 => 0,
+        BugSeverity::S1 => 1,
+        BugSeverity::S2 => 2,
+        BugSeverity::S3 => 3,
+    }
 }
 
 fn wiki_targets(content: &str) -> Vec<String> {

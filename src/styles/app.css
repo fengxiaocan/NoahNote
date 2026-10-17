@@ -2188,9 +2188,120 @@ html[data-theme="dark"] .overdue-panel .list-panel-heading { background: #30291f
 }
 
 .preview-full {
-  max-width: 860px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   width: 100%;
+}
+
+.note-preview-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.note-preview-heading > h2 {
+  min-width: 0;
+  margin: 0;
+}
+.note-preview-heading .icon-button {
+  flex: 0 0 auto;
+}
+.modal-backdrop.note-fullscreen-backdrop {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.note-fullscreen-reader {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  min-width: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface);
+}
+.note-fullscreen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-width: 0;
+  padding: 16px clamp(20px, 3vw, 48px);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.note-fullscreen-title {
+  min-width: 0;
+}
+.note-fullscreen-title > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.note-fullscreen-title > h1 {
+  overflow: hidden;
+  margin: 4px 0 0;
+  color: var(--text-strong);
+  font-size: clamp(17px, 2vw, 24px);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-fullscreen-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+.note-fullscreen-content {
+  min-width: 0;
+  overflow: auto;
+  padding: clamp(24px, 4vw, 64px);
+}
+.note-fullscreen-content > .markdown-preview {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  font-size: clamp(14px, 1vw, 17px);
+}
+.note-fullscreen-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px clamp(20px, 3vw, 48px);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 10px;
+}
+@media (max-width: 640px) {
+  .note-fullscreen-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+  .note-fullscreen-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .note-fullscreen-content {
+    padding: 20px 16px;
+  }
+  .note-fullscreen-footer {
+    flex-direction: column;
+    padding: 10px 16px;
+  }
 }
 
 .editor-stats-bar {

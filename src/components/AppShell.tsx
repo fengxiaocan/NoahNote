@@ -10,6 +10,7 @@ const navItems: Array<{ id: PageId; label: string; icon: string }> = [
   { id: "sparks", label: "思维灵光", icon: "✦" },
   { id: "today", label: "今天", icon: "☀" },
   { id: "tasks", label: "任务", icon: "✓" },
+  { id: "bugs", label: "BUG 任务", icon: "⌁" },
   { id: "schedule", label: "日程", icon: "◷" },
   { id: "notes", label: "笔记", icon: "▤" },
   { id: "projects", label: "项目", icon: "◆" },
@@ -178,7 +179,7 @@ export function AppShell({
                 <div className="search-popover-heading">搜索结果 · {searchResults.length}</div>
                 {searchResults.slice(0, 8).map((result) => (
                   <button type="button" className="search-result" key={`${result.kind}-${result.id}`} onClick={() => onOpenSearchResult(result)}>
-                    <span className={`result-type ${result.kind}`}>{result.kind === "note" ? "笔" : result.kind === "task" ? "✓" : result.kind === "project" ? "◆" : result.kind === "event" ? "◷" : result.kind === "checklist" ? "☑" : result.kind === "knowledge_page" ? "⌘" : result.kind === "pdf" ? "PDF" : "收"}</span>
+                    <span className={`result-type ${result.kind}`}>{result.kind === "note" ? "笔" : result.kind === "task" ? "✓" : result.kind === "bug" ? "⌁" : result.kind === "project" ? "◆" : result.kind === "event" ? "◷" : result.kind === "checklist" ? "☑" : result.kind === "knowledge_page" ? "⌘" : result.kind === "pdf" ? "PDF" : "收"}</span>
                     <span className="result-copy">
                       <strong>{result.title}</strong>
                       <small>{result.snippet || "暂无摘要"}</small>

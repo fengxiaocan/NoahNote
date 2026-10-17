@@ -517,6 +517,7 @@ function NoteEditor({
   const [tags, setTags] = useState(note.tags.join(" "));
   const [projectId, setProjectId] = useState(note.projectId ?? "");
   const [mode, setMode] = useState<"edit" | "split" | "preview">("split");
+  const [fullScreenPreviewOpen, setFullScreenPreviewOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "just-saved">("saved");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [autoSaveMenuOpen, setAutoSaveMenuOpen] = useState(false);
@@ -874,7 +875,7 @@ function NoteEditor({
             type="button"
             className={mode === "preview" ? "is-active" : ""}
             onClick={() => setMode("preview")}
-            title="全屏阅读预览"
+            title="在编辑区阅读预览"
           >
             预览
           </button>
@@ -1307,7 +1308,10 @@ function NoteEditor({
 
             <div className="editor-split-right">
               <div className="preview-wrap">
-                <h2>{title || "无标题笔记"}</h2>
+                <div className="note-preview-heading">
+                  <h2>{title || "无标题笔记"}</h2>
+                  <IconButton label="全屏查看笔记" title="全屏查看笔记" onClick={() => setFullScreenPreviewOpen(true)}>⛶</IconButton>
+                </div>
                 <MarkdownPreview
                   content={content}
                   onToggleTaskItem={handleToggleTaskItem}
@@ -1320,7 +1324,10 @@ function NoteEditor({
 
         {mode === "preview" && (
           <div className="preview-wrap preview-full">
-            <h2>{title || "无标题笔记"}</h2>
+            <div className="note-preview-heading">
+              <h2>{title || "无标题笔记"}</h2>
+              <IconButton label="全屏查看笔记" title="全屏查看笔记" onClick={() => setFullScreenPreviewOpen(true)}>⛶</IconButton>
+            </div>
             <MarkdownPreview
               content={content}
               onToggleTaskItem={handleToggleTaskItem}
@@ -1370,6 +1377,37 @@ function NoteEditor({
           <span className="shortcut-hint">按 Ctrl+S 快速保存</span>
         </div>
       </footer>
+
+      {fullScreenPreviewOpen ? (
+        <DialogLayer className="note-fullscreen-backdrop" onClose={() => setFullScreenPreviewOpen(false)}>
+          <section className="note-fullscreen-reader" role="dialog" aria-modal="true" aria-label={(title || "无标题笔记") + " 全屏预览"}>
+            <header className="note-fullscreen-header">
+              <div className="note-fullscreen-title">
+                <span>笔记预览</span>
+                <h1>{title || "无标题笔记"}</h1>
+              </div>
+              <div className="note-fullscreen-actions">
+                <span>{stats.characters} 字符 · 约 {stats.readingTimeMinutes} 分钟</span>
+                <Button size="small" variant="secondary" onClick={() => setFullScreenPreviewOpen(false)}>退出全屏</Button>
+              </div>
+            </header>
+            <main className="note-fullscreen-content">
+              <MarkdownPreview
+                content={content}
+                onToggleTaskItem={handleToggleTaskItem}
+                onWikiLinkClick={(target) => {
+                  setFullScreenPreviewOpen(false);
+                  onOpenTarget(target, "note");
+                }}
+              />
+            </main>
+            <footer className="note-fullscreen-footer">
+              <span>最后更新于 {formatRelative(note.updatedAt)}</span>
+              <span>按 Esc 或点击「退出全屏」返回</span>
+            </footer>
+          </section>
+        </DialogLayer>
+      ) : null}
 
       {/* Save Records Modal */}
       <SaveRecordsModal

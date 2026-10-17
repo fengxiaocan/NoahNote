@@ -5,7 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use crate::{
     error::{AppError, AppResult},
     models::{
-        Checklist, DocumentKind, DocumentVersion, InboxItem, InboxKind, KnowledgeFolder,
+        Bug, Checklist, DocumentKind, DocumentVersion, InboxItem, InboxKind, KnowledgeFolder,
         KnowledgeNode, KnowledgeNodeKind, KnowledgePage, Note, PdfDocument, PdfOcrStatus, Project,
         ProjectStatus, ScheduleEvent, SearchResult, SemanticDocumentRecord, Space, SparkStage,
         TagSummary, Task, TaskPriority, TaskStatus, Template, TemplateKind, TrashItem, WikiLink,
@@ -48,6 +48,20 @@ impl Database {
                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
                device_id TEXT NOT NULL, workspace_id TEXT NOT NULL, revision INTEGER NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS bugs (
+               id TEXT PRIMARY KEY, code TEXT NOT NULL, title TEXT NOT NULL,
+               status TEXT NOT NULL, priority TEXT NOT NULL, severity TEXT NOT NULL,
+               bug_date TEXT NOT NULL, due_date TEXT, completed_date TEXT,
+               space TEXT NOT NULL, project_id TEXT, module TEXT NOT NULL DEFAULT '',
+               version TEXT NOT NULL DEFAULT '', assignee TEXT NOT NULL DEFAULT '',
+               tags TEXT NOT NULL, favorite INTEGER NOT NULL DEFAULT 0,
+               archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+               updated_at TEXT NOT NULL, batch_id TEXT, row_id TEXT,
+               data TEXT NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS idx_bugs_space_status_due ON bugs(space, archived, status, due_date);
+             CREATE INDEX IF NOT EXISTS idx_bugs_project ON bugs(project_id, archived);
+             CREATE UNIQUE INDEX IF NOT EXISTS idx_bugs_import_row ON bugs(batch_id, row_id) WHERE batch_id IS NOT NULL AND row_id IS NOT NULL;
              CREATE TABLE IF NOT EXISTS projects (
                id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL,
                status TEXT NOT NULL, progress INTEGER NOT NULL DEFAULT 0,
@@ -163,7 +177,7 @@ impl Database {
     }
 
     pub fn clear_content(&self) -> AppResult<()> {
-        self.conn.execute_batch("DELETE FROM notes; DELETE FROM tasks; DELETE FROM projects; DELETE FROM inbox; DELETE FROM events; DELETE FROM checklists; DELETE FROM templates; DELETE FROM knowledge_folders; DELETE FROM knowledge_pages; DELETE FROM wiki_links; DELETE FROM document_versions; DELETE FROM trash_items; DELETE FROM attachments; DELETE FROM documents; DELETE FROM semantic_documents; DELETE FROM search_index;")?;
+        self.conn.execute_batch("DELETE FROM notes; DELETE FROM tasks; DELETE FROM bugs; DELETE FROM projects; DELETE FROM inbox; DELETE FROM events; DELETE FROM checklists; DELETE FROM templates; DELETE FROM knowledge_folders; DELETE FROM knowledge_pages; DELETE FROM wiki_links; DELETE FROM document_versions; DELETE FROM trash_items; DELETE FROM attachments; DELETE FROM documents; DELETE FROM semantic_documents; DELETE FROM search_index;")?;
         Ok(())
     }
 
@@ -428,6 +442,134 @@ impl Database {
             }
         }
         Ok(result)
+    }
+
+    pub fn upsert_bug(&self, bug: &Bug) -> AppResult<()> {
+        let data = serde_json::to_string(bug)?;
+        let searchable = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            bug.code,
+            bug.description,
+            bug.notes,
+            bug.environment,
+            bug.module,
+            bug.version,
+            bug.assignee,
+            bug.reporter,
+            bug.activities
+                .iter()
+                .map(|activity| activity.message.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        self.conn.execute(
+            "INSERT INTO bugs (id,code,title,status,priority,severity,bug_date,due_date,completed_date,space,project_id,module,version,assignee,tags,favorite,archived,created_at,updated_at,batch_id,row_id,data)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)
+             ON CONFLICT(id) DO UPDATE SET code=excluded.code,title=excluded.title,status=excluded.status,priority=excluded.priority,severity=excluded.severity,bug_date=excluded.bug_date,due_date=excluded.due_date,completed_date=excluded.completed_date,space=excluded.space,project_id=excluded.project_id,module=excluded.module,version=excluded.version,assignee=excluded.assignee,tags=excluded.tags,favorite=excluded.favorite,archived=excluded.archived,created_at=excluded.created_at,updated_at=excluded.updated_at,batch_id=excluded.batch_id,row_id=excluded.row_id,data=excluded.data",
+            params![bug.id, bug.code, bug.title, bug.status.as_str(), bug.priority.as_str(), bug.severity.as_str(), bug.bug_date, bug.due_date, bug.completed_date, bug.space.as_str(), bug.project_id, bug.module, bug.version, bug.assignee, tags_json(&bug.tags)?, bool_i64(bug.favorite), bool_i64(bug.archived), bug.created_at, bug.updated_at, bug.source.batch_id, bug.source.row_id, data],
+        )?;
+        self.refresh_search(SearchDocument {
+            id: &bug.id,
+            kind: "bug",
+            title: &bug.title,
+            body: &searchable,
+            tags: &bug.tags,
+            space: &bug.space,
+            updated_at: &bug.updated_at,
+            archived: bug.archived,
+        })
+    }
+
+    pub fn get_bug(&self, id: &str) -> AppResult<Bug> {
+        let data: String = self
+            .conn
+            .query_row("SELECT data FROM bugs WHERE id=?1", [id], |row| row.get(0))
+            .optional()?
+            .ok_or_else(|| AppError::NotFound(format!("BUG {id}")))?;
+        Ok(serde_json::from_str(&data)?)
+    }
+
+    pub fn list_bugs(&self, space: &Space, include_archived: bool) -> AppResult<Vec<Bug>> {
+        let query = if space == &Space::All {
+            "SELECT data FROM bugs WHERE (?1 OR archived=0) ORDER BY updated_at DESC"
+        } else {
+            "SELECT data FROM bugs WHERE space=?1 AND (?2 OR archived=0) ORDER BY updated_at DESC"
+        };
+        let mut statement = self.conn.prepare(query)?;
+        let mut bugs = Vec::new();
+        if space == &Space::All {
+            for row in
+                statement.query_map([bool_i64(include_archived)], |row| row.get::<_, String>(0))?
+            {
+                bugs.push(serde_json::from_str::<Bug>(&row?)?);
+            }
+        } else {
+            for row in statement
+                .query_map(params![space.as_str(), bool_i64(include_archived)], |row| {
+                    row.get::<_, String>(0)
+                })?
+            {
+                bugs.push(serde_json::from_str::<Bug>(&row?)?);
+            }
+        }
+        Ok(bugs)
+    }
+
+    pub fn find_imported_bug(&self, batch_id: &str, row_id: &str) -> AppResult<Option<Bug>> {
+        let data = self
+            .conn
+            .query_row(
+                "SELECT data FROM bugs WHERE batch_id=?1 AND row_id=?2",
+                params![batch_id, row_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        data.map(|data| serde_json::from_str(&data).map_err(AppError::from))
+            .transpose()
+    }
+
+    pub fn find_imported_bug_in_trash(
+        &self,
+        batch_id: &str,
+        row_id: &str,
+    ) -> AppResult<Option<Bug>> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT payload FROM trash_items WHERE kind='bug'")?;
+        let payloads = statement.query_map([], |row| row.get::<_, String>(0))?;
+        for payload in payloads {
+            let payload = payload?;
+            let value: serde_json::Value = serde_json::from_str(&payload)?;
+            let bug: Bug = serde_json::from_value(value)?;
+            if bug.source.batch_id.as_deref() == Some(batch_id)
+                && bug.source.row_id.as_deref() == Some(row_id)
+            {
+                return Ok(Some(bug));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn code_exists(&self, code: &str) -> AppResult<bool> {
+        Ok(self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM bugs WHERE code=?1)",
+            [code],
+            |row| row.get::<_, bool>(0),
+        )?)
+    }
+
+    pub fn delete_bug(&self, id: &str) -> AppResult<()> {
+        self.delete_content_row("bugs", id)
+    }
+
+    pub fn remove_bug_search(&self, id: &str) -> AppResult<()> {
+        self.conn
+            .execute("DELETE FROM search_index WHERE id=?1 AND kind='bug'", [id])?;
+        Ok(())
+    }
+
+    pub fn bug_tags(&self, space: &Space) -> AppResult<Vec<String>> {
+        self.collect_tag_json("bugs", "tags", space)
     }
 
     pub fn upsert_project(&self, project: &Project) -> AppResult<()> {
@@ -1059,6 +1201,9 @@ impl Database {
             add_tags(&mut counts, &tags);
         }
         for tags in self.collect_tag_json("tasks", "tags", space)? {
+            add_tags(&mut counts, &tags);
+        }
+        for tags in self.collect_tag_json("bugs", "tags", space)? {
             add_tags(&mut counts, &tags);
         }
         for tags in self.collect_tag_json("projects", "tags", space)? {

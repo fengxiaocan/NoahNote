@@ -1,5 +1,6 @@
 mod ai;
 mod backup;
+mod bugs;
 mod commands;
 mod error;
 mod models;
@@ -125,6 +126,19 @@ pub fn run() {
             commands::update_task,
             commands::archive_task,
             commands::delete_task,
+            commands::list_bugs,
+            commands::get_bug,
+            commands::create_bug,
+            commands::update_bug,
+            commands::change_bug_status,
+            commands::append_bug_comment,
+            commands::archive_bug,
+            commands::delete_bug,
+            commands::move_bug_space,
+            commands::preview_bug_import,
+            commands::import_bugs,
+            commands::prepare_bug_export,
+            commands::save_bug_export,
             commands::list_projects,
             commands::create_project,
             commands::update_project,

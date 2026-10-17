@@ -315,6 +315,349 @@ pub struct Task {
     pub revision: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BugStatus {
+    #[default]
+    Todo,
+    InProgress,
+    Blocked,
+    PendingVerification,
+    Deferred,
+    Done,
+    Cancelled,
+}
+
+impl BugStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Todo => "todo",
+            Self::InProgress => "in_progress",
+            Self::Blocked => "blocked",
+            Self::PendingVerification => "pending_verification",
+            Self::Deferred => "deferred",
+            Self::Done => "done",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Done | Self::Cancelled)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BugPriority {
+    P0,
+    P1,
+    #[default]
+    P2,
+    P3,
+}
+
+impl BugPriority {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::P0 => "p0",
+            Self::P1 => "p1",
+            Self::P2 => "p2",
+            Self::P3 => "p3",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BugSeverity {
+    S0,
+    S1,
+    #[default]
+    S2,
+    S3,
+}
+
+impl BugSeverity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::S0 => "s0",
+            Self::S1 => "s1",
+            Self::S2 => "s2",
+            Self::S3 => "s3",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BugResolutionReason {
+    Duplicate,
+    NotBug,
+    CannotReproduce,
+    WontFix,
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugResolution {
+    pub reason: BugResolutionReason,
+    #[serde(default)]
+    pub note: String,
+    #[serde(default)]
+    pub duplicate_of_id: Option<String>,
+    #[serde(default)]
+    pub duplicate_code: Option<String>,
+    #[serde(default)]
+    pub duplicate_title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BugActivityKind {
+    Created,
+    Imported,
+    Updated,
+    StatusChanged,
+    CommentAdded,
+    Reopened,
+    Reactivated,
+    VerificationFailed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugFieldChange {
+    pub field: String,
+    pub before: serde_json::Value,
+    pub after: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugActivity {
+    pub id: String,
+    pub kind: BugActivityKind,
+    pub occurred_at: String,
+    pub device_id: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub changes: Vec<BugFieldChange>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BugSourceKind {
+    Manual,
+    TextImport,
+    Copy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugSource {
+    pub kind: BugSourceKind,
+    #[serde(default)]
+    pub batch_id: Option<String>,
+    #[serde(default)]
+    pub row_id: Option<String>,
+    #[serde(default)]
+    pub line_number: Option<usize>,
+    #[serde(default)]
+    pub copied_from_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Bug {
+    pub schema_version: u8,
+    pub id: String,
+    pub code: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default)]
+    pub environment: String,
+    pub status: BugStatus,
+    pub priority: BugPriority,
+    pub severity: BugSeverity,
+    pub bug_date: String,
+    #[serde(default)]
+    pub due_date: Option<String>,
+    #[serde(default)]
+    pub completed_date: Option<String>,
+    pub space: Space,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub module: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub assignee: String,
+    #[serde(default)]
+    pub reporter: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub resolution: Option<BugResolution>,
+    #[serde(default)]
+    pub reopen_count: u32,
+    #[serde(default)]
+    pub favorite: bool,
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
+    pub activities: Vec<BugActivity>,
+    pub source: BugSource,
+    pub created_at: String,
+    pub updated_at: String,
+    pub device_id: String,
+    pub workspace_id: String,
+    pub revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugDraft {
+    pub title: String,
+    pub space: Space,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default)]
+    pub environment: String,
+    #[serde(default)]
+    pub status: Option<BugStatus>,
+    #[serde(default)]
+    pub priority: Option<BugPriority>,
+    #[serde(default)]
+    pub severity: Option<BugSeverity>,
+    #[serde(default)]
+    pub bug_date: Option<String>,
+    #[serde(default)]
+    pub due_date: Option<String>,
+    #[serde(default)]
+    pub completed_date: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub module: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub assignee: String,
+    #[serde(default)]
+    pub reporter: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub resolution: Option<BugResolution>,
+    #[serde(default)]
+    pub source: Option<BugSource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugStatusChange {
+    pub status: BugStatus,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub completed_date: Option<String>,
+    #[serde(default)]
+    pub resolution: Option<BugResolution>,
+    pub expected_revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugComment {
+    pub message: String,
+    pub expected_revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BugQuery {
+    #[serde(default)]
+    pub search: String,
+    #[serde(default)]
+    pub statuses: Vec<BugStatus>,
+    #[serde(default)]
+    pub priority: Option<BugPriority>,
+    #[serde(default)]
+    pub severity: Option<BugSeverity>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub module: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub assignee: Option<String>,
+    #[serde(default)]
+    pub tag: Option<String>,
+    #[serde(default)]
+    pub date_field: Option<String>,
+    #[serde(default)]
+    pub date_from: Option<String>,
+    #[serde(default)]
+    pub date_to: Option<String>,
+    #[serde(default)]
+    pub include_archived: bool,
+    #[serde(default)]
+    pub sort_by: Option<String>,
+    #[serde(default)]
+    pub descending: bool,
+    #[serde(default)]
+    pub page: usize,
+    #[serde(default)]
+    pub page_size: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BugStats {
+    pub total: usize,
+    pub todo: usize,
+    pub in_progress: usize,
+    pub blocked: usize,
+    pub pending_verification: usize,
+    pub deferred: usize,
+    pub completed: usize,
+    pub cancelled: usize,
+    pub due_today: usize,
+    pub overdue: usize,
+    pub favorite: usize,
+    pub completion_rate: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugPage {
+    pub items: Vec<Bug>,
+    pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub stats: BugStats,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugRowResult {
+    pub row_id: String,
+    pub bug_id: Option<String>,
+    pub bug_code: Option<String>,
+    pub success: bool,
+    pub already_imported: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
